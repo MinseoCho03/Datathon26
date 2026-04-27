@@ -80,7 +80,7 @@ export default function HistoryPage({ data }) {
       {/* Year trend line */}
       <ChartCard title="Annual Disbursements" sub="Gates Foundation total per year, USD millions">
         <ResponsiveContainer width="100%" height={200}>
-          <LineChart data={yearTrend.map(y => ({ year: String(y.year), amount: y.amount }))} margin={{ left: 0, right: 24, top: 8, bottom: 0 }}>
+          <LineChart data={yearTrend.map(y => ({ year: String(y.year), amount: y.amount }))} margin={{ left: 16, right: 24, top: 8, bottom: 0 }}>
             <XAxis dataKey="year" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
             <YAxis hide />
             <Tooltip content={<TT />} />

@@ -424,6 +424,34 @@ for rid, rrows in gates_proj_by_id.items():
 gates_projects.sort(key=lambda x: -x['amount'])
 print(f'Gates projects: {len(gates_projects)}, total: {fmt(gates_total)}')
 
+# ── Org-by-country-sector aggregation (for simulator org lists) ───────────────
+org_by_cs = defaultdict(lambda: defaultdict(float))
+for r in rows:
+    country = str(r.get('country') or '').strip()
+    if is_regional(country):
+        continue
+    yr_str = str(r.get('year') or '').split('-')[0].strip()
+    try:
+        int(yr_str)
+    except ValueError:
+        continue
+    sector_raw = str(r.get('sector_description') or '').strip()
+    sector = clean_sector(sector_raw)
+    org = str(r.get('organization_name') or '').strip()
+    amt = to_float(r.get('usd_disbursements_defl'))
+    if not org or amt <= 0:
+        continue
+    org_by_cs[(country, sector)][org] += amt
+
+orgs_by_cs_out = {}
+for (country, sector), orgs in org_by_cs.items():
+    key = f"{country}|||{sector}"
+    orgs_by_cs_out[key] = sorted(
+        [{'org': o, 'amount': round(a, 4)} for o, a in orgs.items()],
+        key=lambda x: -x['amount']
+    )[:5]
+print(f'orgsByCS entries: {len(orgs_by_cs_out)}')
+
 # ── Global metrics ────────────────────────────────────────────────────────────
 total_funding = sum(r['amount'] for r in clean_rows)
 
@@ -442,6 +470,7 @@ output = {
     'donorCountries': donor_countries,
     'records': records,
     'projects': projects_out,
+    'orgsByCS': orgs_by_cs_out,
     'gatesFunding': {
         'org': 'Gates Foundation',
         'total': round(gates_total, 2),

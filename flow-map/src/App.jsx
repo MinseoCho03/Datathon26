@@ -4,12 +4,14 @@ import MapPage from './pages/MapPage.jsx'
 import ProjectsPage from './pages/ProjectsPage.jsx'
 import HistoryPage from './pages/HistoryPage.jsx'
 import SignalsPage from './pages/SignalsPage.jsx'
+import SimulatorPage from './pages/SimulatorPage.jsx'
 
 const PAGE_TITLES = {
-  map:      'Follow the Money',
-  projects: 'Discover Projects',
-  history:  'Funding History',
-  signals:  'Funding Signals',
+  map:       'Follow the Money',
+  projects:  'Discover Projects',
+  simulator: 'Funding Strategy Simulator',
+  history:   'Funding History',
+  signals:   'Funding Signals',
 }
 
 export default function App() {
@@ -70,6 +72,7 @@ export default function App() {
         <main style={{ flex: 1, overflowY: 'auto', background: '#0b1829' }}>
           {page === 'map'      && <MapPage      data={data} />}
           {page === 'projects' && <ProjectsPage data={data} />}
+          {page === 'simulator' && <SimulatorPage data={data} />}
           {page === 'history'  && <HistoryPage  data={data} />}
           {page === 'signals'  && <SignalsPage  data={data} />}
         </main>
