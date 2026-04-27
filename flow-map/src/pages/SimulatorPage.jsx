@@ -109,7 +109,7 @@ function AIExplanation() {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-export default function SimulatorPage({ data }) {
+export default function SimulatorPage({ data, projects, projectsLoading }) {
   const [budget, setBudget] = useState(10)
   const [region, setRegion] = useState('All')
   const [sector, setSector] = useState('All')
@@ -141,7 +141,6 @@ export default function SimulatorPage({ data }) {
     Object.fromEntries((data.recipients || []).map(r => [r.country, r])),
   [data])
 
-  const orgsByCS = data.orgsByCS || {}
 
   const regions  = useMemo(() => ['All', ...new Set((data.recipients||[]).map(r=>r.regionMacro).filter(Boolean)).values()].sort((a,b) => a==='All'?-1:a.localeCompare(b)), [data])
   const sectorOpts = useMemo(() => (data.sectors||['All']).filter(s => s!=='Unspecified'&&s!=='Other'), [data])
@@ -295,7 +294,7 @@ export default function SimulatorPage({ data }) {
 
               <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:12}}>
                 {portfolio.allocs.map((alloc, i) => (
-                  <AllocationCard key={`${alloc.country}-${alloc.sector}`} alloc={alloc} rank={i+1} risk={params.risk} orgsByCS={orgsByCS} />
+                  <AllocationCard key={`${alloc.country}-${alloc.sector}`} alloc={alloc} rank={i+1} risk={params.risk} projects={projects} projectsLoading={projectsLoading} />
                 ))}
               </div>
 
@@ -313,71 +312,113 @@ export default function SimulatorPage({ data }) {
   )
 }
 
-// ── Allocation card ───────────────────────────────────────────────────────────
-function AllocationCard({ alloc, rank, risk, orgsByCS }) {
-  const [expanded, setExpanded] = useState(false)
-  const orgs = orgsByCS[`${alloc.country}|||${alloc.sector}`] || []
+// ── Allocation card (flip) ────────────────────────────────────────────────────
+const CARD_H = 270
+
+function AllocationCard({ alloc, rank, risk, projects, projectsLoading }) {
+  const [flipped, setFlipped] = useState(false)
   const wsCl   = wsColor(alloc.wsScore)
   const concCl = concColor(alloc.topDonorShare)
 
+  const countryProjects = useMemo(() =>
+    (projects || []).filter(p => p.country === alloc.country),
+    [projects, alloc.country]
+  )
+
   return (
-    <div onClick={() => setExpanded(e => !e)}
-      style={{ background:'#0f1e31', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10, padding:'14px 16px', display:'flex', flexDirection:'column', gap:10, cursor:'pointer', transition:'border-color 0.15s', borderColor: expanded ? 'rgba(35,102,201,0.3)' : 'rgba(255,255,255,0.07)' }}>
+    <div style={{ perspective: '1200px', height: CARD_H }}>
+      <div style={{
+        position: 'relative', height: '100%',
+        transformStyle: 'preserve-3d',
+        transition: 'transform 0.45s ease',
+        transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+      }}>
 
-      {/* Header */}
-      <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
-        <div>
-          <p style={{fontSize:13, fontWeight:700, color:'#e2eaf4'}}>{alloc.country}</p>
-          <p style={{fontSize:11, color:'#60a5fa', marginTop:1}}>{alloc.sector}</p>
-          {alloc.meta?.regionMacro && <p style={{fontSize:10, color:'#334155', marginTop:1}}>{alloc.meta.regionMacro}</p>}
+        {/* ── FRONT ── */}
+        <div style={{
+          position: 'absolute', inset: 0,
+          backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden',
+          background: '#0f1e31', border: '1px solid rgba(255,255,255,0.07)',
+          borderRadius: 10, padding: '14px 16px',
+          display: 'flex', flexDirection: 'column', gap: 10, overflow: 'hidden',
+        }}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+            <div>
+              <p style={{fontSize:13, fontWeight:700, color:'#e2eaf4'}}>{alloc.country}</p>
+              <p style={{fontSize:11, color:'#60a5fa', marginTop:1}}>{alloc.sector}</p>
+              {alloc.meta?.regionMacro && <p style={{fontSize:10, color:'#334155', marginTop:1}}>{alloc.meta.regionMacro}</p>}
+            </div>
+            <div style={{textAlign:'right', flexShrink:0}}>
+              <p style={{fontSize:16, fontWeight:700, color:'#34d399'}}>{fmt(alloc.allocation)}</p>
+              <p style={{fontSize:10, color:'#475569'}}>{alloc.sharePct}% of budget</p>
+            </div>
+          </div>
+
+          <div style={{display:'flex', flexDirection:'column', gap:6}}>
+            <SignalBar label="White Space"     value={alloc.wsScore}   color={wsCl}    tag={wsLabel(alloc.wsScore)} />
+            <SignalBar label="Concentration"   value={alloc.concScore} color={concCl}  tag={concLabel(alloc.topDonorShare)} />
+            <SignalBar label="Sector Activity" value={alloc.actScore}  color="#60a5fa" tag={alloc.actScore>60?'High':alloc.actScore>30?'Med':'Low'} />
+            <SignalBar label="Momentum"        value={alloc.momScore}  color="#a78bfa" tag={alloc.momScore>60?'↑':alloc.momScore>45?'→':'↓'} />
+          </div>
+
+          {alloc.topDonors.length > 0 && (
+            <div>
+              <p style={{fontSize:10, color:'#334155', marginBottom:4}}>Top existing donors</p>
+              <div style={{display:'flex', gap:4, flexWrap:'wrap'}}>
+                {alloc.topDonors.map(d=>(
+                  <span key={d} style={{fontSize:10, padding:'2px 7px', borderRadius:4, background:'rgba(255,255,255,0.06)', color:'#64748b', border:'1px solid rgba(255,255,255,0.06)'}}>
+                    {d.replace("China (People's Republic of)",'China')}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{flex:1}} />
+          <button onClick={() => setFlipped(true)}
+            style={{background:'none', border:'none', color:'#334155', fontSize:10, cursor:'pointer', padding:'4px 0', textAlign:'center', width:'100%'}}>
+            ▼ see active projects in {alloc.country}
+          </button>
         </div>
-        <div style={{textAlign:'right', flexShrink:0}}>
-          <p style={{fontSize:16, fontWeight:700, color:'#34d399'}}>{fmt(alloc.allocation)}</p>
-          <p style={{fontSize:10, color:'#475569'}}>{alloc.sharePct}% of budget</p>
-        </div>
-      </div>
 
-      {/* Signal bars */}
-      <div style={{display:'flex', flexDirection:'column', gap:6}}>
-        <SignalBar label="White Space"     value={alloc.wsScore}   color={wsCl}   tag={wsLabel(alloc.wsScore)} />
-        <SignalBar label="Concentration"   value={alloc.concScore} color={concCl} tag={concLabel(alloc.topDonorShare)} />
-        <SignalBar label="Sector Activity" value={alloc.actScore}  color="#60a5fa" tag={alloc.actScore>60?'High':alloc.actScore>30?'Med':'Low'} />
-        <SignalBar label="Momentum"        value={alloc.momScore}  color="#a78bfa" tag={alloc.momScore>60?'↑':alloc.momScore>45?'→':'↓'} />
-      </div>
+        {/* ── BACK ── */}
+        <div style={{
+          position: 'absolute', inset: 0,
+          backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden',
+          transform: 'rotateY(180deg)',
+          background: '#0f1e31', border: '1px solid rgba(35,102,201,0.25)',
+          borderRadius: 10, padding: '12px 14px',
+          display: 'flex', flexDirection: 'column', gap: 8,
+        }}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0}}>
+            <div>
+              <p style={{fontSize:12, fontWeight:700, color:'#e2eaf4'}}>{alloc.country}</p>
+              <p style={{fontSize:10, color:'#60a5fa', marginTop:1}}>Active Projects ({countryProjects.length})</p>
+            </div>
+            <button onClick={() => setFlipped(false)}
+              style={{background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:6, color:'#64748b', fontSize:11, cursor:'pointer', padding:'3px 10px'}}>
+              ← back
+            </button>
+          </div>
 
-      {/* Top donors */}
-      {alloc.topDonors.length > 0 && (
-        <div>
-          <p style={{fontSize:10, color:'#334155', marginBottom:4}}>Top existing donors</p>
-          <div style={{display:'flex', gap:4, flexWrap:'wrap'}}>
-            {alloc.topDonors.map(d=>(
-              <span key={d} style={{fontSize:10, padding:'2px 7px', borderRadius:4, background:'rgba(255,255,255,0.06)', color:'#64748b', border:'1px solid rgba(255,255,255,0.06)'}}>
-                {d.replace("China (People's Republic of)",'China')}
-              </span>
-            ))}
+          <div style={{overflowY:'auto', flex:1}}>
+            {projectsLoading && !projects ? (
+              <div style={{display:'flex', alignItems:'center', gap:8, padding:'12px 0', color:'#475569', fontSize:11}}>
+                <div style={{width:12, height:12, border:'2px solid #2366c9', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.8s linear infinite', flexShrink:0}} />
+                Loading projects…
+              </div>
+            ) : countryProjects.length > 0 ? countryProjects.map((p, i) => (
+              <div key={p.id || i} style={{padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
+                <p style={{fontSize:11, color:'#c8dff2', lineHeight:1.4}}>{p.title}</p>
+                <p style={{fontSize:10, color:'#475569', marginTop:2}}>{p.sector} · {p.year} · {fmt(p.amount)}</p>
+              </div>
+            )) : (
+              <p style={{fontSize:11, color:'#334155', padding:'8px 0'}}>No detailed project data available for {alloc.country} in the current dataset.</p>
+            )}
           </div>
         </div>
-      )}
 
-      {/* Expanded: org list */}
-      {expanded && (
-        <div onClick={e => e.stopPropagation()}
-          style={{borderTop:'1px solid rgba(35,102,201,0.2)', paddingTop:10, display:'flex', flexDirection:'column', gap:6}}>
-          <p style={{fontSize:11, fontWeight:600, color:'#7ab4d8', marginBottom:4}}>Organisations active in {alloc.country} · {alloc.sector}</p>
-          {orgs.length > 0 ? orgs.map(o=>(
-            <div key={o.org} style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-              <span style={{fontSize:11, color:'#94a3b8'}}>{o.org}</span>
-              <span style={{fontSize:11, color:'#475569'}}>{fmt(o.amount)}</span>
-            </div>
-          )) : (
-            <p style={{fontSize:11, color:'#334155'}}>No detailed project data available for this country-sector combination in the current dataset.</p>
-          )}
-        </div>
-      )}
-
-      <p style={{fontSize:10, color:'#334155', textAlign:'center', marginTop:-4}}>
-        {expanded ? '▲ collapse' : '▼ click to see active organisations'}
-      </p>
+      </div>
     </div>
   )
 }

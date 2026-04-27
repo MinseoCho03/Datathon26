@@ -159,16 +159,16 @@ export default function CountryProfile({ recipient, onClose, sectorDnaData, coun
       {pieSectors.length > 0 && (
         <div>
           <p style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Sector DNA</p>
-          <ResponsiveContainer width="100%" height={160}>
-            <PieChart margin={{ left: 10, right: 0, top: 0, bottom: 0 }}>
+          <ResponsiveContainer width="100%" height={190}>
+            <PieChart>
               <Pie
                 data={pieSectors}
                 dataKey="value"
                 nameKey="name"
-                cx="43%"
-                cy="50%"
-                innerRadius={35}
-                outerRadius={65}
+                cx="50%"
+                cy="42%"
+                innerRadius={32}
+                outerRadius={58}
                 paddingAngle={2}
               >
                 {pieSectors.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
@@ -178,12 +178,12 @@ export default function CountryProfile({ recipient, onClose, sectorDnaData, coun
                 contentStyle={{ background: '#070f1c', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 11, color: '#c8dff2' }}
               />
               <Legend
-                layout="vertical"
-                align="right"
-                verticalAlign="middle"
+                layout="horizontal"
+                align="center"
+                verticalAlign="bottom"
                 iconType="circle"
-                iconSize={7}
-                wrapperStyle={{ fontSize: 10, color: '#64748b', paddingLeft: 8 }}
+                iconSize={6}
+                wrapperStyle={{ fontSize: 9, color: '#64748b', paddingTop: 4 }}
               />
             </PieChart>
           </ResponsiveContainer>

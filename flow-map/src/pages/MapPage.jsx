@@ -105,7 +105,7 @@ function CountrySearch({ countries, onSelect }) {
   )
 }
 
-export default function MapPage({ data }) {
+export default function MapPage({ data, projects }) {
   const [selectedCountry, setSelectedCountry] = useState(null)
   const [filters, setFilters] = useState({ sector: 'All', year: 'All', topN: 5 })
   const setFilter = (k, v) => setFilters(p => ({ ...p, [k]: v }))
@@ -156,24 +156,33 @@ export default function MapPage({ data }) {
     const sector = {}
     yearOnlyRecords.forEach(r => { sector[r.sector] = (sector[r.sector] || 0) + r.amount })
 
-    const sort = (m, n) => Object.entries(m).map(([name, amount]) => ({ name, amount })).sort((a, b) => b.amount - a.amount).slice(0, n)
+    const normName = n => n
+      .replace("China (People's Republic of)", 'China')
+      .replace('Democratic Republic of the Congo', 'DR Congo')
+      .replace("Lao People's Democratic Republic", 'Laos')
+      .replace('Bolivia (Plurinational State of)', 'Bolivia')
+      .replace('West Bank and Gaza Strip', 'West Bank & Gaza')
+      .replace('Syrian Arab Republic', 'Syria')
+      .replace('Iran (Islamic Republic of)', 'Iran')
+
+    const sort = (m, n) => Object.entries(m).map(([name, amount]) => ({ name: normName(name), amount })).sort((a, b) => b.amount - a.amount).slice(0, n)
     const sectorPie = Object.entries(sector).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 8)
 
     return { donor: sort(donor, 8), country: sort(country, 10), region: sort(region, 8), sectorPie }
   }, [filteredRecords, yearOnlyRecords, recipientMeta])
 
-  // Country-specific top orgs for sidebar toggle (from data.projects)
+  // Country-specific top orgs for sidebar toggle (from projects)
   const countryOrgs = useMemo(() => {
-    if (!selectedCountry) return []
+    if (!selectedCountry || !projects) return []
     const m = {}
-    ;(data.projects || []).forEach(p => {
+    projects.forEach(p => {
       if (p.country !== selectedCountry) return
       if (filters.year !== 'All' && String(p.year) !== String(filters.year)) return
       if (!m[p.org]) m[p.org] = { org: p.org, donorCountry: p.donorCountry, amount: 0 }
       m[p.org].amount += p.amount
     })
     return Object.values(m).sort((a, b) => b.amount - a.amount).slice(0, 5)
-  }, [selectedCountry, data, filters.year])
+  }, [selectedCountry, projects, filters.year])
 
   // Sector DNA for CountryProfile (year-only, no sector filter)
   const sectorDnaData = useMemo(() => {
@@ -257,11 +266,17 @@ export default function MapPage({ data }) {
       </div>
 
       {/* KPI cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
-        <Kpi label="Total Funding" value={fmt(kpis.total)} sub="Current filters" />
-        <Kpi label="Recipient Countries" value={kpis.countries} sub="In filtered records" />
-        <Kpi label="Donor Countries" value={kpis.donors} sub="In filtered records" />
-        <Kpi label="Flow Records" value={kpis.records.toLocaleString()} sub="Aggregated grant records" />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Worldwide OECD Data</span>
+          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.06)' }} />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
+          <Kpi label="Total Funding" value={fmt(kpis.total)} sub="Current filters" />
+          <Kpi label="Recipient Countries" value={kpis.countries} sub="In filtered records" />
+          <Kpi label="Donor Countries" value={kpis.donors} sub="In filtered records" />
+          <Kpi label="Flow Records" value={kpis.records.toLocaleString()} sub="Aggregated grant records" />
+        </div>
       </div>
 
       {/* 4 charts */}
@@ -295,12 +310,12 @@ export default function MapPage({ data }) {
         {/* Top Donor Countries — full names, no skipping */}
         <ChartCard title="Top Donor Countries">
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={charts.donor} layout="vertical" margin={{ left: 10, right: 12, top: 0, bottom: 0 }}>
+            <BarChart data={charts.donor} layout="vertical" margin={{ left: 110, right: 12, top: 0, bottom: 0 }}>
               <XAxis type="number" hide />
               <YAxis
                 type="category"
                 dataKey="name"
-                width={130}
+                width={8}
                 tick={{ fill: '#64748b', fontSize: 11 }}
                 axisLine={false}
                 tickLine={false}
@@ -316,10 +331,10 @@ export default function MapPage({ data }) {
 
         {/* Top Recipient Countries */}
         <ChartCard title="Top Recipient Countries">
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={charts.country} layout="vertical" margin={{ left: 0, right: 12, top: 0, bottom: 0 }}>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={charts.country} layout="vertical" margin={{ left: 16, right: 12, top: 0, bottom: 0 }}>
               <XAxis type="number" hide />
-              <YAxis type="category" dataKey="name" width={100} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} interval={0} />
+              <YAxis type="category" dataKey="name" width={110} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} interval={0} />
               <Tooltip content={<TT />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
               <Bar dataKey="amount" radius={[0,4,4,0]} maxBarSize={16} fill="#0d846a" />
             </BarChart>

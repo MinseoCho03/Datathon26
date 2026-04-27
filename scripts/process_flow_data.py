@@ -340,10 +340,8 @@ for rid, rrows in proj_by_id.items():
         'flowType':    str(best.get('type_of_flow') or '').strip(),
     })
 
-# Sort: largest first; keep top 1000 for manageable payload
 projects_raw.sort(key=lambda x: -x['amount'])
-projects_out = projects_raw[:1000]
-print(f'OECD projects (top 1000 of {len(projects_raw)}): first="{projects_out[0]["title"][:60]}"')
+print(f'OECD projects: {len(projects_raw)}, first="{projects_raw[0]["title"][:60]}"')
 
 # ── Gates Foundation specific aggregations ───────────────────────────────────
 gates_rows = [r for r in rows if str(r.get('organization_name') or '').strip() == 'Gates Foundation']
@@ -469,7 +467,6 @@ output = {
     'recipients': recipients,
     'donorCountries': donor_countries,
     'records': records,
-    'projects': projects_out,
     'orgsByCS': orgs_by_cs_out,
     'gatesFunding': {
         'org': 'Gates Foundation',
@@ -483,14 +480,18 @@ output = {
     },
 }
 
-out_path = '/Users/lerowang/Desktop/Datathon26/flow-map/public/flow-data.json'
 import os
-os.makedirs(os.path.dirname(out_path), exist_ok=True)
+os.makedirs('/Users/lerowang/Desktop/Datathon26/flow-map/public', exist_ok=True)
+
+out_path = '/Users/lerowang/Desktop/Datathon26/flow-map/public/flow-data.json'
 with open(out_path, 'w') as f:
     json.dump(output, f, separators=(',', ':'))
+print(f'\nWrote {out_path} ({os.path.getsize(out_path)//1024:.0f} KB)')
 
-size_kb = os.path.getsize(out_path) / 1024
-print(f'\nWrote {out_path} ({size_kb:.0f} KB)')
+projects_path = '/Users/lerowang/Desktop/Datathon26/flow-map/public/projects.json'
+with open(projects_path, 'w') as f:
+    json.dump(projects_raw, f, separators=(',', ':'))
+print(f'Wrote {projects_path} ({os.path.getsize(projects_path)//1024:.0f} KB, {len(projects_raw)} projects)')
 print(f'Recipients: {len(recipients)}, Donors: {len(donor_countries)}, Records: {len(records)}')
 print(f'Total funding: {fmt(total_funding)}')
 print(f'Years: {all_years}')

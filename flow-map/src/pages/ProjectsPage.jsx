@@ -76,8 +76,8 @@ function ProjectCard({ p }) {
 
 const PAGE_SIZE = 30
 
-export default function ProjectsPage({ data }) {
-  const projects = data.projects || []
+export default function ProjectsPage({ data, projects: projectsProp, projectsLoading }) {
+  const projects = projectsProp || []
   const [search, setSearch]       = useState('')
   const [sector, setSector]       = useState('All')
   const [donor, setDonor]         = useState('All')
@@ -140,9 +140,17 @@ export default function ProjectsPage({ data }) {
       </div>
 
       {/* Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
-        {visible.map(p => <ProjectCard key={p.id} p={p} />)}
-      </div>
+      {projectsLoading && projects.length === 0 ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60, gap: 12, color: '#475569', fontSize: 13 }}>
+          <div style={{ width: 18, height: 18, border: '2px solid #2366c9', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+          Loading {(31366).toLocaleString()} projects…
+          <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+          {visible.map(p => <ProjectCard key={p.id} p={p} />)}
+        </div>
+      )}
 
       {visible.length < filtered.length && (
         <button

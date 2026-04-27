@@ -3,7 +3,6 @@ import Sidebar from './components/Sidebar.jsx'
 import MapPage from './pages/MapPage.jsx'
 import ProjectsPage from './pages/ProjectsPage.jsx'
 import HistoryPage from './pages/HistoryPage.jsx'
-import SignalsPage from './pages/SignalsPage.jsx'
 import SimulatorPage from './pages/SimulatorPage.jsx'
 
 const PAGE_TITLES = {
@@ -11,7 +10,6 @@ const PAGE_TITLES = {
   projects:  'Discover Projects',
   simulator: 'Funding Strategy Simulator',
   history:   'Funding History',
-  signals:   'Funding Signals',
 }
 
 export default function App() {
@@ -20,11 +18,22 @@ export default function App() {
   const [error, setError]             = useState(null)
   const [page, setPage]               = useState('map')
   const [collapsed, setCollapsed]     = useState(false)
+  const [projects, setProjects]       = useState(null)
+  const [projectsLoading, setProjectsLoading] = useState(false)
 
   useEffect(() => {
     fetch('./flow-data.json')
       .then(r => r.json())
-      .then(d => { setData(d); setLoading(false) })
+      .then(d => {
+        setData(d)
+        setLoading(false)
+        // Load all projects in the background once main data is ready
+        setProjectsLoading(true)
+        fetch('./projects.json')
+          .then(r => r.json())
+          .then(p => { setProjects(p); setProjectsLoading(false) })
+          .catch(() => setProjectsLoading(false))
+      })
       .catch(e => { setError(e.message); setLoading(false) })
   }, [])
 
@@ -70,11 +79,10 @@ export default function App() {
 
         {/* Page content */}
         <main style={{ flex: 1, overflowY: 'auto', background: '#0b1829' }}>
-          {page === 'map'      && <MapPage      data={data} />}
-          {page === 'projects' && <ProjectsPage data={data} />}
-          {page === 'simulator' && <SimulatorPage data={data} />}
-          {page === 'history'  && <HistoryPage  data={data} />}
-          {page === 'signals'  && <SignalsPage  data={data} />}
+          {page === 'map'       && <MapPage       data={data} projects={projects} />}
+          {page === 'projects'  && <ProjectsPage  data={data} projects={projects} projectsLoading={projectsLoading} />}
+          {page === 'simulator' && <SimulatorPage data={data} projects={projects} projectsLoading={projectsLoading} />}
+          {page === 'history'   && <HistoryPage   data={data} />}
         </main>
       </div>
     </div>
