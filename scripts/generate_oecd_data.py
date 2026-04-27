@@ -8,6 +8,7 @@ import pandas as pd
 SOURCE = Path("/Users/jominseo/Downloads/OECD Dataset.xlsx")
 SHEET = "complete_p4d3_df"
 OUT = Path(__file__).resolve().parents[1] / "data" / "oecd-data.js"
+CSV_SOURCE = OUT.parent / "OECD Dataset.xlsx - complete_p4d3_df.csv"
 
 USECOLS = [
     "year",
@@ -22,6 +23,55 @@ USECOLS = [
     "project_description",
     "usd_disbursements_defl",
 ]
+
+COUNTRY_COORDS = {
+    "Afghanistan": [34.0, 66.0],
+    "Bangladesh": [24.0, 90.0],
+    "Belgium": [50.5, 4.5],
+    "Brazil": [-10.0, -55.0],
+    "Burkina Faso": [13.0, -2.0],
+    "Canada": [57.0, -106.0],
+    "China (People's Republic of)": [35.0, 103.0],
+    "Colombia": [4.0, -74.0],
+    "Democratic Republic of the Congo": [-3.0, 23.0],
+    "Denmark": [56.0, 10.0],
+    "Dominican Republic": [19.0, -70.6],
+    "Egypt": [27.0, 30.0],
+    "Ethiopia": [9.0, 40.0],
+    "France": [46.0, 2.0],
+    "Germany": [51.0, 10.0],
+    "Ghana": [7.9, -1.0],
+    "India": [21.0, 78.0],
+    "Indonesia": [-2.0, 118.0],
+    "Ireland": [53.0, -8.0],
+    "Italy": [42.5, 12.5],
+    "Japan": [36.0, 138.0],
+    "Kenya": [0.5, 37.9],
+    "Malawi": [-13.0, 34.0],
+    "Mexico": [23.0, -102.0],
+    "Mozambique": [-18.0, 35.0],
+    "Netherlands": [52.0, 5.0],
+    "Nigeria": [9.0, 8.0],
+    "Norway": [61.0, 8.0],
+    "Pakistan": [30.0, 69.0],
+    "Peru": [-9.0, -75.0],
+    "Portugal": [39.5, -8.0],
+    "Qatar": [25.3, 51.2],
+    "Rwanda": [-2.0, 30.0],
+    "Senegal": [14.5, -14.5],
+    "South Africa": [-30.0, 24.0],
+    "Spain": [40.0, -4.0],
+    "Sweden": [62.0, 15.0],
+    "Switzerland": [47.0, 8.0],
+    "Tanzania": [-6.0, 35.0],
+    "Uganda": [1.0, 32.0],
+    "Ukraine": [49.0, 32.0],
+    "United Kingdom": [55.0, -3.0],
+    "United States": [39.0, -98.0],
+    "Zambia": [-13.0, 28.0],
+}
+
+REGIONAL_BUCKET_TERMS = ("regional", "unspecified", "bilateral", "global")
 
 PROJECTS = [
     {
@@ -101,6 +151,130 @@ def format_amount(millions):
     if millions >= 1:
         return f"${millions:.1f}M"
     return f"${millions * 1000:.0f}K"
+
+
+def is_regional_bucket(value):
+    value = str(value or "").strip().lower()
+    return not value or any(term in value for term in REGIONAL_BUCKET_TERMS)
+
+
+def country_point(name):
+    coords = COUNTRY_COORDS.get(str(name or "").strip())
+    if not coords:
+        return None
+    return {"country": str(name).strip(), "lat": coords[0], "lon": coords[1]}
+
+
+def clean_year_series(series):
+    year_text = series.fillna("").astype(str).str.strip()
+    return pd.to_numeric(year_text.where(year_text.str.fullmatch(r"\d{4}")), errors="coerce")
+
+
+def top_amount_records(grouped, label_key, amount_key="amount", limit=6):
+    records = []
+    for label, amount in grouped.sort_values(ascending=False).head(limit).items():
+        records.append({label_key: str(label), amount_key: float(amount), "amountLabel": format_amount(amount)})
+    return records
+
+
+def flow_map_payload(df, recipient_limit=24):
+    flow_df = df.copy()
+    flow_df["_year_exact"] = clean_year_series(flow_df["year"])
+    flow_df["sector_description"] = flow_df["sector_description"].fillna("Unspecified").astype(str).str.strip()
+    flow_df["country"] = flow_df["country"].fillna("").astype(str).str.strip()
+    flow_df["Donor_country"] = flow_df["Donor_country"].fillna("").astype(str).str.strip()
+    flow_df["region"] = flow_df["region"].fillna(flow_df["region_macro"]).fillna("Unknown").astype(str).str.strip()
+    flow_df["region_macro"] = flow_df["region_macro"].fillna("Unknown").astype(str).str.strip()
+    flow_df = flow_df[
+        (flow_df["usd_disbursements_defl"] > 0)
+        & flow_df["_year_exact"].between(2020, 2023)
+        & flow_df["country"].isin(COUNTRY_COORDS)
+        & flow_df["Donor_country"].isin(COUNTRY_COORDS)
+        & ~flow_df["country"].map(is_regional_bucket)
+        & ~flow_df["Donor_country"].map(is_regional_bucket)
+    ].copy()
+
+    if flow_df.empty:
+        return {"years": [], "sectors": [], "recipients": [], "donorCountries": [], "records": []}
+
+    recipient_totals = flow_df.groupby("country")["usd_disbursements_defl"].sum().sort_values(ascending=False)
+    ranked_recipients = list(recipient_totals.head(recipient_limit).index)
+    country_ranks = {country: index + 1 for index, country in enumerate(recipient_totals.index)}
+    map_df = flow_df[flow_df["country"].isin(ranked_recipients)].copy()
+
+    records_grouped = (
+        map_df.groupby(["Donor_country", "country", "sector_description", "_year_exact"], dropna=False)["usd_disbursements_defl"]
+        .sum()
+        .reset_index()
+        .sort_values("usd_disbursements_defl", ascending=False)
+    )
+    records = [
+        {
+            "donorCountry": row["Donor_country"],
+            "country": row["country"],
+            "sector": row["sector_description"] or "Unspecified",
+            "year": int(row["_year_exact"]),
+            "amount": float(row["usd_disbursements_defl"]),
+            "amountLabel": format_amount(row["usd_disbursements_defl"]),
+        }
+        for _, row in records_grouped.iterrows()
+    ]
+
+    recipients = []
+    for country in ranked_recipients:
+        country_df = map_df[map_df["country"] == country]
+        point = country_point(country)
+        if not point:
+            continue
+        top_donors = top_amount_records(country_df.groupby("Donor_country")["usd_disbursements_defl"].sum(), "donorCountry", limit=6)
+        top_sectors = top_amount_records(country_df.groupby("sector_description")["usd_disbursements_defl"].sum(), "sector", limit=6)
+        top_orgs = top_amount_records(country_df.groupby("organization_name")["usd_disbursements_defl"].sum(), "organization", limit=5)
+        yearly = country_df.groupby("_year_exact")["usd_disbursements_defl"].sum()
+        recipients.append(
+            {
+                **point,
+                "region": clean_value(country_df["region"].mode().iloc[0]) if not country_df["region"].mode().empty else "Unknown",
+                "regionMacro": clean_value(country_df["region_macro"].mode().iloc[0]) if not country_df["region_macro"].mode().empty else "Unknown",
+                "amount": float(country_df["usd_disbursements_defl"].sum()),
+                "amountLabel": format_amount(country_df["usd_disbursements_defl"].sum()),
+                "rank": country_ranks[country],
+                "topDonors": top_donors,
+                "topSectors": top_sectors,
+                "topOrganizations": top_orgs,
+                "yearTrend": [
+                    {"year": int(year), "amount": float(yearly.get(year, 0)), "amountLabel": format_amount(yearly.get(year, 0))}
+                    for year in [2020, 2021, 2022, 2023]
+                ],
+            }
+        )
+
+    donor_countries = []
+    for donor_country in sorted(set(map_df["Donor_country"])):
+        point = country_point(donor_country)
+        if point:
+            point["amount"] = float(map_df.loc[map_df["Donor_country"] == donor_country, "usd_disbursements_defl"].sum())
+            point["amountLabel"] = format_amount(point["amount"])
+            donor_countries.append(point)
+
+    sector_totals = map_df.groupby("sector_description")["usd_disbursements_defl"].sum().sort_values(ascending=False)
+    sectors = [{"label": "All sectors", "amount": float(sector_totals.sum()), "amountLabel": format_amount(sector_totals.sum())}]
+    sectors += [{"label": label, "amount": float(amount), "amountLabel": format_amount(amount)} for label, amount in sector_totals.head(12).items()]
+
+    ignored = df[
+        df["country"].fillna("").astype(str).map(is_regional_bucket)
+        | ~df["country"].fillna("").astype(str).str.strip().isin(COUNTRY_COORDS)
+    ]
+    ignored_buckets = top_group(ignored, "country", 5) if not ignored.empty else []
+
+    return {
+        "years": [2020, 2021, 2022, 2023],
+        "sectors": sectors,
+        "recipients": recipients,
+        "donorCountries": donor_countries,
+        "records": records,
+        "ignoredBuckets": ignored_buckets,
+        "note": "Map excludes regional/unspecified recipient buckets and plots countries with available dashboard coordinates.",
+    }
 
 
 def record_to_project(row, score=None, reason=None):
@@ -265,12 +439,12 @@ def gap_signal(df, project):
 
 
 def main():
-    df = pd.read_excel(SOURCE, sheet_name=SHEET, usecols=lambda c: c in USECOLS)
+    if CSV_SOURCE.exists():
+        df = pd.read_csv(CSV_SOURCE, usecols=lambda c: c in USECOLS)
+    else:
+        df = pd.read_excel(SOURCE, sheet_name=SHEET, usecols=lambda c: c in USECOLS)
     df["usd_disbursements_defl"] = pd.to_numeric(df["usd_disbursements_defl"], errors="coerce").fillna(0)
-    df["_year_numeric"] = pd.to_numeric(
-        df["year"].astype(str).str.extract(r"(\d{4})", expand=False),
-        errors="coerce",
-    )
+    df["_year_numeric"] = clean_year_series(df["year"])
     df = df[df["usd_disbursements_defl"] >= 0].copy()
 
     total = float(df["usd_disbursements_defl"].sum())
@@ -312,6 +486,7 @@ def main():
         "topSectors": top_group(df, "sector_description", 10),
         "topFunders": top_group(df, "organization_name", 10),
         "topDonorCountries": top_group(df, "Donor_country", 8),
+        "flowMap": flow_map_payload(df),
         "recordCounts": {
             "countries": count_group(df, "country", 10),
             "sectors": count_group(df, "sector_description", 10),

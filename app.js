@@ -385,6 +385,7 @@ function initialPage() {
   const hashPage = window.location.hash.replace("#", "");
   const allowedPages = new Set([
     "overview",
+    "opportunity-atlas",
     "discovery",
     "detail",
     "queue",
@@ -416,7 +417,16 @@ const state = {
     gap: "All",
     verification: "Self-reported",
   },
+  flow: {
+    recipient: "",
+    sector: "All sectors",
+    year: "All years",
+    topN: 5,
+  },
 };
+
+let activeFlowDeck = null;
+let visualLibrariesLoading = null;
 
 function currentPortalType() {
   return document.body.dataset.portal || (window.__INITIAL_PAGE__ === "submit" ? "builder" : "funder");
@@ -1312,15 +1322,542 @@ function pageHeader(id, title, subtitle, description = "", actions = "", portal 
   </header>`;
 }
 
+const flowColors = ["#1d5fd0", "#0d846a", "#9b5de5", "#d97706", "#dc2626", "#0891b2", "#64748b"];
+
+function flowData() {
+  return oecd.flowMap || { years: [], sectors: [], recipients: [], donorCountries: [], records: [] };
+}
+
+function mapPoint(item) {
+  return {
+    x: ((Number(item.lon) + 180) / 360) * 1000,
+    y: ((90 - Number(item.lat)) / 180) * 520,
+  };
+}
+
+function shortCountryName(country) {
+  return String(country || "")
+    .replace("China (People's Republic of)", "China")
+    .replace("Democratic Republic of the Congo", "DRC")
+    .replace("United Kingdom", "UK")
+    .replace("United States", "US");
+}
+
+function flowAmountLabel(millions) {
+  const value = Number(millions || 0);
+  if (value >= 1000) return `$${(value / 1000).toFixed(1)}B`;
+  if (value >= 1) return `$${value.toFixed(1)}M`;
+  return `$${Math.round(value * 1000)}K`;
+}
+
+function flowRecordsForFilters() {
+  const f = state.flow;
+  return (flowData().records || []).filter((record) => {
+    const sectorMatch = f.sector === "All sectors" || record.sector === f.sector;
+    const yearMatch = f.year === "All years" || Number(record.year) === Number(f.year);
+    return sectorMatch && yearMatch;
+  });
+}
+
+function aggregateFlowRecipients() {
+  const data = flowData();
+  const byCountry = new Map();
+  flowRecordsForFilters().forEach((record) => {
+    const current = byCountry.get(record.country) || 0;
+    byCountry.set(record.country, current + Number(record.amount || 0));
+  });
+  const baseByCountry = new Map((data.recipients || []).map((recipient) => [recipient.country, recipient]));
+  const recipients = Array.from(byCountry.entries())
+    .map(([country, amount]) => {
+      const base = baseByCountry.get(country);
+      return base ? { ...base, filteredAmount: amount, filteredAmountLabel: flowAmountLabel(amount) } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.filteredAmount - a.filteredAmount);
+  return recipients.length ? recipients : data.recipients || [];
+}
+
+function selectedFlowRecipient() {
+  const recipients = aggregateFlowRecipients();
+  if (!recipients.length) return null;
+  if (!state.flow.recipient) return null;
+  const selected = recipients.find((recipient) => recipient.country === state.flow.recipient);
+  if (selected) return selected;
+  state.flow.recipient = "";
+  return null;
+}
+
+function flowCountryPoint(country) {
+  const data = flowData();
+  return [...(data.recipients || []), ...(data.donorCountries || [])].find((item) => item.country === country);
+}
+
+function filteredCountryProfile(country) {
+  if (!country) {
+    return { total: 0, totalLabel: "$0", topDonors: [], topSectors: [], yearTrend: [] };
+  }
+  const records = flowRecordsForFilters().filter((record) => record.country === country);
+  const donorTotals = new Map();
+  const sectorTotals = new Map();
+  const yearTotals = new Map();
+  let total = 0;
+  records.forEach((record) => {
+    const amount = Number(record.amount || 0);
+    total += amount;
+    donorTotals.set(record.donorCountry, (donorTotals.get(record.donorCountry) || 0) + amount);
+    sectorTotals.set(record.sector, (sectorTotals.get(record.sector) || 0) + amount);
+    yearTotals.set(record.year, (yearTotals.get(record.year) || 0) + amount);
+  });
+  const topDonors = Array.from(donorTotals.entries())
+    .map(([donorCountry, amount]) => ({ donorCountry, amount, amountLabel: flowAmountLabel(amount) }))
+    .sort((a, b) => b.amount - a.amount);
+  const topSectors = Array.from(sectorTotals.entries())
+    .map(([sector, amount]) => ({ label: sector, amount, amountLabel: flowAmountLabel(amount) }))
+    .sort((a, b) => b.amount - a.amount);
+  const yearTrend = (flowData().years || [2020, 2021, 2022, 2023]).map((year) => ({
+    label: year,
+    amount: yearTotals.get(year) || 0,
+    amountLabel: flowAmountLabel(yearTotals.get(year) || 0),
+  }));
+  return { total, totalLabel: flowAmountLabel(total), topDonors, topSectors, yearTrend };
+}
+
+function flowArcPath(from, to, index) {
+  const start = mapPoint(from);
+  const end = mapPoint(to);
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  if (distance < 8) {
+    const loop = 30 + index * 7;
+    return `M ${end.x.toFixed(1)} ${end.y.toFixed(1)} c ${loop} -${loop} ${loop * 1.7} ${loop} 0 ${loop * 1.2}`;
+  }
+  const midX = (start.x + end.x) / 2;
+  const midY = (start.y + end.y) / 2;
+  const lift = Math.min(125, Math.max(32, distance * 0.22)) + index * 7;
+  return `M ${start.x.toFixed(1)} ${start.y.toFixed(1)} Q ${midX.toFixed(1)} ${(midY - lift).toFixed(1)} ${end.x.toFixed(1)} ${end.y.toFixed(1)}`;
+}
+
+function markerRadius(amount, maxAmount, min = 7, max = 24) {
+  const scale = Math.sqrt(Number(amount || 0) / Math.max(Number(maxAmount || 1), 1));
+  return min + scale * (max - min);
+}
+
+function flowSelectOptions() {
+  const data = flowData();
+  const sectorOptions = (data.sectors || [{ label: "All sectors" }])
+    .map((sector) => `<option value="${escapeHtml(sector.label)}" ${state.flow.sector === sector.label ? "selected" : ""}>${escapeHtml(sector.label)}</option>`)
+    .join("");
+  const yearOptions = ["All years", ...(data.years || [])]
+    .map((year) => `<option value="${escapeHtml(year)}" ${String(state.flow.year) === String(year) ? "selected" : ""}>${escapeHtml(year)}</option>`)
+    .join("");
+  return `
+    <label>Sector
+      <select data-flow-filter="sector">${sectorOptions}</select>
+    </label>
+    <label>Year
+      <select data-flow-filter="year">${yearOptions}</select>
+    </label>
+    <label>Top donor countries
+      <select data-flow-filter="topN">
+        ${[3, 5, 7].map((value) => `<option value="${value}" ${Number(state.flow.topN) === value ? "selected" : ""}>Top ${value}</option>`).join("")}
+      </select>
+    </label>
+  `;
+}
+
+function renderFlowMapSvg(recipient, profile) {
+  const recipients = aggregateFlowRecipients();
+  const maxRecipient = Math.max(...recipients.map((item) => item.filteredAmount || item.amount || 0), 1);
+  const topDonors = recipient ? profile.topDonors.slice(0, Number(state.flow.topN || 5)) : [];
+  const arcs = topDonors
+    .map((donor, index) => {
+      const donorPoint = flowCountryPoint(donor.donorCountry);
+      if (!donorPoint) return "";
+      const color = flowColors[index % flowColors.length];
+      if (!recipient) return "";
+      return `<path class="flow-arc" d="${flowArcPath(donorPoint, recipient, index)}" style="--arc-color:${color};" />`;
+    })
+    .join("");
+  const donorMarkers = topDonors
+    .map((donor, index) => {
+      const donorPoint = flowCountryPoint(donor.donorCountry);
+      if (!donorPoint) return "";
+      const p = mapPoint(donorPoint);
+      const color = flowColors[index % flowColors.length];
+      return `<g class="flow-donor" transform="translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})">
+        <circle r="7" fill="${color}"></circle>
+        <text y="-12">${escapeHtml(shortCountryName(donor.donorCountry))}</text>
+      </g>`;
+    })
+    .join("");
+  const recipientMarkers = recipients
+    .map((item) => {
+      const p = mapPoint(item);
+      const active = recipient && item.country === recipient.country;
+      const radius = markerRadius(item.filteredAmount || item.amount, maxRecipient);
+      return `<g class="flow-recipient ${active ? "active" : ""}" data-country="${escapeHtml(item.country)}" tabindex="0" transform="translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})">
+        <circle r="${radius.toFixed(1)}"></circle>
+        <text y="${(radius + 15).toFixed(1)}">${escapeHtml(shortCountryName(item.country))}</text>
+      </g>`;
+    })
+    .join("");
+  return `<svg class="flow-map-svg" viewBox="0 60 1000 420" role="img" aria-label="Donor country to recipient country funding flow map">
+    <rect class="ocean" width="1000" height="520"></rect>
+    <g class="graticule">
+      ${[150, 300, 450, 600, 750, 900].map((x) => `<line x1="${x}" y1="34" x2="${x}" y2="486"></line>`).join("")}
+      ${[110, 200, 290, 380, 470].map((y) => `<line x1="36" y1="${y}" x2="964" y2="${y}"></line>`).join("")}
+    </g>
+    <g class="continents" aria-hidden="true">
+      <path d="M110,150 C150,80 265,70 330,130 C365,170 330,230 270,235 C220,238 210,292 160,276 C90,255 70,190 110,150 Z"></path>
+      <path d="M275,285 C335,300 360,380 326,460 C294,520 242,470 236,410 C230,354 238,305 275,285 Z"></path>
+      <path d="M480,128 C565,94 690,118 772,180 C835,226 815,305 725,316 C655,324 645,390 584,386 C518,382 522,305 468,286 C405,260 398,162 480,128 Z"></path>
+      <path d="M505,275 C590,260 640,325 628,410 C620,470 555,476 522,420 C488,364 462,300 505,275 Z"></path>
+      <path d="M742,352 C798,332 875,360 890,412 C854,452 770,454 735,420 C710,394 714,366 742,352 Z"></path>
+    </g>
+    <g class="flow-arcs">${arcs}</g>
+    <g class="flow-donors">${donorMarkers}</g>
+    <g class="flow-recipients">${recipientMarkers}</g>
+  </svg>`;
+}
+
+function narrativeSummary(recipient, profile) {
+  const firstDonor = profile.topDonors[0];
+  const firstSector = profile.topSectors[0];
+  const peakYear = [...profile.yearTrend].sort((a, b) => b.amount - a.amount)[0];
+  if (!recipient || !firstDonor || !firstSector) {
+    return "Select a country to surface the strongest donor, sector, and timing signals from the filtered dataset.";
+  }
+  return `${shortCountryName(recipient.country)} received ${profile.totalLabel} in the current view. ${shortCountryName(firstDonor.donorCountry)} is the largest donor-country source, while ${firstSector.label} is the dominant sector. The strongest year in this filtered slice is ${peakYear.label} at ${peakYear.amountLabel}.`;
+}
+
+function trendDelta(profile) {
+  const trend = profile.yearTrend || [];
+  const first = trend[0]?.amount || 0;
+  const last = trend[trend.length - 1]?.amount || 0;
+  if (!first && !last) return "No trend signal";
+  const delta = last - first;
+  const pct = first ? Math.round((delta / first) * 100) : 100;
+  return `${delta >= 0 ? "+" : ""}${pct}% since ${trend[0]?.label || 2020}`;
+}
+
+function renderLeaderLens(recipient, profile) {
+  const topDonor = profile.topDonors[0];
+  const secondDonor = profile.topDonors[1];
+  const topSector = profile.topSectors[0];
+  const concentration = topDonor && profile.total ? Math.round((topDonor.amount / profile.total) * 100) : 0;
+  const cofunding = secondDonor ? `${shortCountryName(secondDonor.donorCountry)} is the next largest source at ${secondDonor.amountLabel}.` : "No strong second donor-country signal in this slice.";
+  const sectorShare = topSector && profile.total ? Math.round((topSector.amount / profile.total) * 100) : 0;
+  const countryLabel = recipient ? shortCountryName(recipient.country) : "a recipient country";
+  return `<section class="leader-lens grid four">
+    <article class="leader-card">
+      <span>Portfolio Concentration</span>
+      <strong>${recipient ? `${concentration}%` : "Select"}</strong>
+      <p>${recipient && topDonor ? `${shortCountryName(topDonor.donorCountry)} drives the largest share of ${countryLabel} funding.` : "Pick a country to see dependency on a single donor-country source."}</p>
+    </article>
+    <article class="leader-card">
+      <span>Co-Funder Signal</span>
+      <strong>${recipient && secondDonor ? shortCountryName(secondDonor.donorCountry) : "Open"}</strong>
+      <p>${recipient ? cofunding : "Identify who else is already active before deciding whether to partner, follow, or avoid duplication."}</p>
+    </article>
+    <article class="leader-card">
+      <span>Cause Mix</span>
+      <strong>${recipient && topSector ? `${sectorShare}%` : "Lens"}</strong>
+      <p>${recipient && topSector ? `${topSector.label} is the dominant cause area in this filtered view.` : "Use sector filters to test health, education, climate, and systems-change theses."}</p>
+    </article>
+    <article class="leader-card">
+      <span>Timing Signal</span>
+      <strong>${recipient ? escapeHtml(trendDelta(profile)) : "Trend"}</strong>
+      <p>${recipient ? "Useful for spotting momentum, pullback, or a new opening for catalytic capital." : "Choose a country to see whether funding is rising or fading over time."}</p>
+    </article>
+  </section>`;
+}
+
+function renderCountryProfileDrawer(recipient, profile) {
+  const openClass = recipient ? "open" : "";
+  return `<aside class="flow-profile-drawer ${openClass}" aria-live="polite">
+    <button class="flow-profile-close" type="button" aria-label="Close country profile">×</button>
+    ${recipient ? `
+      ${sectionHeader("Country Profile", "Decision lens for the selected recipient.")}
+      <div class="profile-stat">
+        <span>Total received</span>
+        <strong>${escapeHtml(profile.totalLabel)}</strong>
+      </div>
+      <div class="profile-stat">
+        <span>Top donor country</span>
+        <strong>${escapeHtml(shortCountryName(profile.topDonors[0]?.donorCountry || "n/a"))}</strong>
+      </div>
+      <div class="mini-section">
+        <h3>Top Donor Countries</h3>
+        ${barList(profile.topDonors.slice(0, Number(state.flow.topN || 5)).map((donor) => ({ label: shortCountryName(donor.donorCountry), amount: donor.amount, amountLabel: donor.amountLabel })), "amount")}
+      </div>
+      <div class="mini-section">
+        <h3>Sector DNA</h3>
+        ${barList(profile.topSectors.slice(0, 5), "amount")}
+      </div>
+      <div class="mini-section">
+        <h3>Year Trend</h3>
+        <div id="profile-trend-chart" class="recharts-slot">${yearLineChart(profile.yearTrend, "amount")}</div>
+      </div>
+    ` : `
+      ${sectionHeader("Select a Country", "Country profile appears here after a map selection.")}
+      <p class="drawer-empty">Use the map to test where your foundation could coordinate with existing funders, spot concentration risk, or identify an under-served cause area.</p>
+    `}
+  </aside>`;
+}
+
+function loadScriptOnce(src, globalName) {
+  if (globalName && window[globalName]) return Promise.resolve();
+  const existing = document.querySelector(`script[data-visual-src="${src}"]`);
+  if (existing) {
+    return new Promise((resolve) => {
+      existing.addEventListener("load", resolve, { once: true });
+      existing.addEventListener("error", resolve, { once: true });
+    });
+  }
+  return new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.defer = true;
+    script.dataset.visualSrc = src;
+    script.onload = resolve;
+    script.onerror = resolve;
+    document.head.appendChild(script);
+  });
+}
+
+function loadVisualizationLibraries() {
+  if (visualLibrariesLoading) return visualLibrariesLoading;
+  visualLibrariesLoading = Promise.all([
+    loadScriptOnce("https://unpkg.com/deck.gl@8.9.35/dist.min.js", "deck"),
+  ]).then(() => {
+    renderOverview();
+  });
+  return visualLibrariesLoading;
+}
+
+function flowLngLat(country) {
+  const point = flowCountryPoint(country);
+  return point ? [Number(point.lon), Number(point.lat)] : null;
+}
+
+function mountDeckFlowMap(recipient, profile) {
+  const container = $("#deck-flow-map");
+  if (!container || !window.deck) return;
+  const DeckGL = window.deck;
+  if (activeFlowDeck) {
+    activeFlowDeck.finalize();
+    activeFlowDeck = null;
+  }
+  container.classList.add("deck-ready");
+
+  const recipients = aggregateFlowRecipients().map((item) => ({
+    ...item,
+    position: [Number(item.lon), Number(item.lat)],
+    kind: "recipient",
+  }));
+  const maxRecipient = Math.max(...recipients.map((item) => item.filteredAmount || item.amount || 0), 1);
+  const arcData = recipient
+    ? profile.topDonors.slice(0, Number(state.flow.topN || 5)).map((donor, index) => ({
+        ...donor,
+        kind: "arc",
+        color: flowColors[index % flowColors.length],
+        sourcePosition: flowLngLat(donor.donorCountry),
+        targetPosition: flowLngLat(recipient.country),
+      })).filter((item) => item.sourcePosition && item.targetPosition)
+    : [];
+  const donorPoints = arcData.map((item, index) => ({
+    country: item.donorCountry,
+    amount: item.amount,
+    amountLabel: item.amountLabel,
+    position: item.sourcePosition,
+    color: flowColors[index % flowColors.length],
+    kind: "donor",
+  }));
+
+  activeFlowDeck = new DeckGL.Deck({
+    parent: container,
+    initialViewState: { longitude: 18, latitude: 12, zoom: 1.18, pitch: 0, bearing: 0 },
+    controller: true,
+    layers: [
+      new DeckGL.ArcLayer({
+        id: "donor-recipient-arcs",
+        data: arcData,
+        getSourcePosition: (d) => d.sourcePosition,
+        getTargetPosition: (d) => d.targetPosition,
+        getSourceColor: (d) => hexToRgb(d.color, 210),
+        getTargetColor: [13, 132, 106, 230],
+        getWidth: (d) => Math.max(2, Math.sqrt(d.amount || 0) * 0.16),
+        greatCircle: true,
+        pickable: true,
+      }),
+      new DeckGL.ScatterplotLayer({
+        id: "recipient-points",
+        data: recipients,
+        getPosition: (d) => d.position,
+        getRadius: (d) => 42000 + Math.sqrt((d.filteredAmount || d.amount || 0) / maxRecipient) * 420000,
+        getFillColor: (d) => (recipient && d.country === recipient.country ? [13, 132, 106, 230] : [29, 95, 208, 190]),
+        getLineColor: [255, 255, 255, 230],
+        lineWidthMinPixels: 2,
+        pickable: true,
+        stroked: true,
+        onClick: ({ object }) => {
+          if (!object?.country) return;
+          state.flow.recipient = object.country;
+          renderOverview();
+        },
+      }),
+      new DeckGL.ScatterplotLayer({
+        id: "donor-points",
+        data: donorPoints,
+        getPosition: (d) => d.position,
+        getRadius: 105000,
+        getFillColor: (d) => hexToRgb(d.color, 230),
+        getLineColor: [255, 255, 255, 235],
+        lineWidthMinPixels: 2,
+        pickable: true,
+        stroked: true,
+      }),
+      new DeckGL.TextLayer({
+        id: "donor-labels",
+        data: donorPoints,
+        getPosition: (d) => d.position,
+        getText: (d) => shortCountryName(d.country),
+        getColor: [15, 23, 42, 235],
+        getSize: 13,
+        getTextAnchor: "middle",
+        getAlignmentBaseline: "bottom",
+        background: true,
+        getBackgroundColor: [255, 255, 255, 210],
+        backgroundPadding: [4, 2],
+      }),
+    ],
+    getTooltip: ({ object }) => {
+      if (!object) return null;
+      const label = object.donorCountry || object.country;
+      const amount = object.amountLabel || object.filteredAmountLabel || object.amountLabel;
+      return `${shortCountryName(label)}${amount ? `\n${amount}` : ""}`;
+    },
+  });
+}
+
+function hexToRgb(hex, alpha = 255) {
+  const clean = String(hex || "#1d5fd0").replace("#", "");
+  const value = parseInt(clean.length === 3 ? clean.split("").map((char) => char + char).join("") : clean, 16);
+  return [(value >> 16) & 255, (value >> 8) & 255, value & 255, alpha];
+}
+
+function mountRechartsTrend(profile) {
+  const el = $("#profile-trend-chart");
+  if (!el || !window.React || !window.ReactDOM || !window.Recharts || !profile?.yearTrend?.length) return;
+  const React = window.React;
+  const { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } = window.Recharts;
+  const root = window.ReactDOM.createRoot(el);
+  root.render(
+    React.createElement(
+      ResponsiveContainer,
+      { width: "100%", height: 168 },
+      React.createElement(
+        LineChart,
+        { data: profile.yearTrend.map((item) => ({ year: item.label, amount: Number(item.amount || 0) })) },
+        React.createElement(XAxis, { dataKey: "year", tickLine: false, axisLine: false }),
+        React.createElement(YAxis, { hide: true }),
+        React.createElement(Tooltip, {
+          formatter: (value) => flowAmountLabel(value),
+          labelFormatter: (label) => `Year ${label}`,
+        }),
+        React.createElement(Line, {
+          type: "monotone",
+          dataKey: "amount",
+          stroke: "#1d5fd0",
+          strokeWidth: 3,
+          dot: { r: 4, fill: "#0d846a", strokeWidth: 0 },
+        }),
+      ),
+    ),
+  );
+}
+
 function renderOverview() {
+  const data = flowData();
+  const recipient = selectedFlowRecipient();
+  const profile = filteredCountryProfile(recipient?.country);
+  const recipients = aggregateFlowRecipients();
+  if (!recipients.length) {
+    $("#overview").innerHTML = pageHeader("overview-title", "Follow the Money", "No flow-map data is available yet.");
+    return;
+  }
+  const metrics = oecd.metrics || {};
+  $("#overview").innerHTML = `
+    ${pageHeader(
+      "overview-title",
+      "Follow the Money",
+      "Interactive donor-country to recipient-country funding flows from the OECD private philanthropy dataset.",
+      "Hover over a recipient country to reveal the donor countries funding projects there. Regional and unspecified buckets are kept out of the map so real countries do not get visually drowned out.",
+      `<span class="badge blue">Amounts are USD millions</span><span class="badge green">2020-2023</span>`,
+      "Product Track Dashboard",
+    )}
+    <section class="grid four">
+      ${kpi("Total Funding", metrics.totalFundingLabel || "$68.2B")}
+      ${kpi("Mapped Flow Slice", data.sectors?.[0]?.amountLabel || "$36.1B")}
+      ${kpi("Recipient Countries", String((data.recipients || []).length))}
+      ${kpi("Donor Countries", String((data.donorCountries || []).length))}
+    </section>
+    ${renderLeaderLens(recipient, profile)}
+    <section class="flow-toolbar section">
+      ${flowSelectOptions()}
+    </section>
+    <section class="flow-dashboard section">
+      <article class="flow-map-panel">
+        <div class="flow-map-head">
+          <div>
+            <h2>${escapeHtml(recipient?.country || "Select a recipient country")}</h2>
+            <p>${recipient ? `${escapeHtml(recipient.regionMacro || recipient.region || "Mapped recipient")} · global recipient rank #${escapeHtml(recipient.rank || "n/a")}` : "Deck.gl ArcLayer flow map · click a country to open the foundation leader profile"}</p>
+          </div>
+          <strong>${escapeHtml(recipient ? profile.totalLabel : "Explore")}</strong>
+        </div>
+        <div id="deck-flow-map" class="deck-flow-map">
+          ${renderFlowMapSvg(recipient, profile)}
+        </div>
+        ${renderCountryProfileDrawer(recipient, profile)}
+        <div class="flow-map-footer">
+          <span>Deck.gl ArcLayer + ScatterplotLayer when available</span>
+          <span>Static SVG fallback for offline demos</span>
+        </div>
+      </article>
+    </section>
+    <section class="section grid two">
+      <article class="card chart-card">
+        ${sectionHeader("Leader Questions", "What a foundation leader can decide from this view.")}
+        <div class="decision-list">
+          <p><strong>Where are we duplicating?</strong> Compare dominant donor countries before adding more capital.</p>
+          <p><strong>Where can we co-fund?</strong> Find active peer funders already moving money into the same place.</p>
+          <p><strong>Where is the cause mix too narrow?</strong> Use Sector DNA to see whether health, education, climate, or systems work is crowded or under-served.</p>
+          <p><strong>Is momentum changing?</strong> Use the year signal to spot pullbacks, surges, or timing windows.</p>
+        </div>
+      </article>
+      <article class="card insight-card">
+        ${sectionHeader("Narrative Summary", "Ready to swap for Claude-generated summaries after API wiring.")}
+        <p>${escapeHtml(narrativeSummary(recipient, profile))}</p>
+        <div class="badge-row">
+          ${(data.ignoredBuckets || []).slice(0, 3).map((bucket) => `<span class="badge amber">Excluded: ${escapeHtml(bucket.label)} ${escapeHtml(bucket.amountLabel)}</span>`).join("")}
+        </div>
+      </article>
+    </section>
+  `;
+  mountDeckFlowMap(recipient, profile);
+  loadVisualizationLibraries();
+}
+
+function renderOpportunityAtlas() {
   const recommendations = recommendedProjects(3);
   const countryCount = new Set(projects.map((project) => project.country)).size;
   const highGapCount = projects.filter((project) => project.opportunityGap === "High" || project.opportunityGap === "Medium-High").length;
   const pilotReadyCount = projects.filter((project) => project.readiness === "Pilot-ready").length;
-  $("#overview").innerHTML = `
+  $("#opportunity-atlas").innerHTML = `
     ${pageHeader(
-      "overview-title",
-      "First Spark",
+      "opportunity-atlas-title",
+      "Project Pipeline",
       `${escapeHtml(FUNDER_ACCOUNT.name)} · ${escapeHtml(FUNDER_ACCOUNT.description)}`,
       "First Spark turns self-reported local projects into structured, funder-readable opportunity profiles, helping opportunity providers discover young builders beyond traditional credentials and networks.",
     )}
@@ -2321,6 +2858,7 @@ function renderSignals() {
 
 function renderCurrentPage() {
   renderOverview();
+  renderOpportunityAtlas();
   renderDiscovery();
   renderDetail();
   renderBuilderProfilePage();
@@ -2347,8 +2885,31 @@ function goTo(page) {
 }
 
 document.addEventListener("click", (event) => {
+  const menuToggle = event.target.closest(".menu-toggle");
+  if (menuToggle) {
+    const isOpen = document.body.classList.toggle("nav-open");
+    menuToggle.setAttribute("aria-expanded", String(isOpen));
+    return;
+  }
+
+  const profileClose = event.target.closest(".flow-profile-close");
+  if (profileClose) {
+    state.flow.recipient = "";
+    renderOverview();
+    return;
+  }
+
+  const flowRecipient = event.target.closest(".flow-recipient");
+  if (flowRecipient) {
+    state.flow.recipient = flowRecipient.dataset.country;
+    renderOverview();
+    return;
+  }
+
   const nav = event.target.closest(".nav-link");
   if (nav) {
+    document.body.classList.remove("nav-open");
+    $(".menu-toggle")?.setAttribute("aria-expanded", "false");
     goTo(nav.dataset.page);
     return;
   }
@@ -2373,7 +2934,7 @@ document.addEventListener("click", (event) => {
   if (packet) {
     state.selectedProjectId = packet.dataset.projectId;
     const project = getProject(state.selectedProjectId);
-    if (currentPortalType() === "funder" && ["overview", "discovery", "queue", "funder-history", "builder-profile"].includes(state.page)) {
+    if (currentPortalType() === "funder" && ["overview", "opportunity-atlas", "discovery", "queue", "funder-history", "builder-profile"].includes(state.page)) {
       recordBuilderProjectView(project, "Evaluation Packet");
     }
     state.reviewMessage = "";
@@ -2457,7 +3018,32 @@ document.addEventListener("click", (event) => {
   }
 });
 
+document.addEventListener("mouseover", (event) => {
+  const flowRecipient = event.target.closest(".flow-recipient");
+  if (!flowRecipient || state.page !== "overview") return;
+  if (state.flow.recipient === flowRecipient.dataset.country) return;
+  state.flow.recipient = flowRecipient.dataset.country;
+  renderOverview();
+});
+
+document.addEventListener("keydown", (event) => {
+  const flowRecipient = event.target.closest(".flow-recipient");
+  if (!flowRecipient || !["Enter", " "].includes(event.key)) return;
+  event.preventDefault();
+  state.flow.recipient = flowRecipient.dataset.country;
+  renderOverview();
+});
+
 document.addEventListener("change", (event) => {
+  const flowFilter = event.target.closest("[data-flow-filter]");
+  if (flowFilter) {
+    const key = flowFilter.dataset.flowFilter;
+    state.flow[key] = key === "topN" ? Number(flowFilter.value) : flowFilter.value;
+    state.flow.recipient = "";
+    renderOverview();
+    return;
+  }
+
   const filter = event.target.closest("[data-filter]");
   if (!filter) return;
   state.filters[filter.dataset.filter] = filter.value;

@@ -22,7 +22,7 @@ async function main() {
   page.on("pageerror", (error) => errors.push(error.message));
 
   await page.goto(loginUrl, { waitUntil: "load" });
-  const loginTitle = await page.getByRole("heading", { name: "Opportunity Atlas" }).textContent();
+  const loginTitle = await page.getByRole("heading", { name: "First Spark" }).textContent();
   const funderLinkVisible = await page.getByRole("link", { name: /Funder/ }).isVisible();
 
   await page.goto(funderUrl, { waitUntil: "load" });
@@ -30,6 +30,13 @@ async function main() {
   await page.reload({ waitUntil: "load" });
   await page.waitForSelector("#overview.active");
   const overviewTitle = await page.locator("#overview-title").textContent();
+  const flowMapVisible = await page.locator("#overview .flow-map-svg").isVisible();
+  const recipientCount = await page.locator("#overview .flow-recipient").count();
+  await page.locator("#overview .flow-recipient").nth(3).hover();
+  const selectedCountry = await page.locator("#overview .flow-map-head h2").textContent();
+  const flowArcCount = await page.locator("#overview .flow-arc").count();
+  await page.getByRole("button", { name: "Project Pipeline" }).click();
+  const pipelineTitle = await page.locator("#opportunity-atlas-title").textContent();
 
   await page.getByRole("button", { name: "Discover Projects" }).click();
   await page.locator('#discovery select[data-filter="country"]').selectOption("Ghana");
@@ -78,7 +85,6 @@ async function main() {
   await page.getByRole("button", { name: "Review Queue" }).click();
   const statusPersistsAfterRefresh = await page.locator("#queue").getByText("Offline-first learning app for rural schools").first().isVisible();
 
-  await page.screenshot({ path: path.join(root, "opportunity-atlas-smoke.png"), fullPage: true });
   await browser.close();
 
   console.log(
@@ -87,6 +93,11 @@ async function main() {
         loginTitle,
         funderLinkVisible,
         overviewTitle,
+        flowMapVisible,
+        recipientCount,
+        selectedCountry,
+        flowArcCount,
+        pipelineTitle,
         ghanaCards,
         detailTitle,
         projectSnapshot,
@@ -116,9 +127,13 @@ async function main() {
 
   if (
     errors.length ||
-    loginTitle !== "Opportunity Atlas" ||
+    loginTitle !== "First Spark" ||
     !funderLinkVisible ||
-    overviewTitle !== "Opportunity Atlas" ||
+    overviewTitle !== "Follow the Money" ||
+    !flowMapVisible ||
+    recipientCount < 8 ||
+    flowArcCount < 1 ||
+    pipelineTitle !== "Project Pipeline" ||
     ghanaCards < 1 ||
     !totalFunding ||
     !submittedProjectVisible ||

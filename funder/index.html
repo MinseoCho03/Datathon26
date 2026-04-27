@@ -4,10 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>First Spark — Funder Portal</title>
-    <link rel="stylesheet" href="../styles.css" />
+    <link rel="stylesheet" href="../styles.css?v=flow-leader" />
   </head>
   <body data-portal="funder">
     <aside class="sidebar">
+      <button class="menu-toggle" type="button" aria-label="Open navigation" aria-expanded="false">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
       <div class="brand">
         <div class="brand-mark">FS</div>
         <div>
@@ -24,7 +29,8 @@
       <nav aria-label="Primary">
         <div class="nav-group">
           <span>Funder Portal</span>
-          <button class="nav-link active" data-page="overview">Overview</button>
+          <button class="nav-link active" data-page="overview">Follow the Money</button>
+          <button class="nav-link" data-page="opportunity-atlas">Project Pipeline</button>
           <button class="nav-link" data-page="discovery">Discover Projects</button>
           <button class="nav-link" data-page="queue">Review Queue</button>
           <button class="nav-link" data-page="funder-history">Funding History</button>
@@ -43,6 +49,7 @@
         <button class="top-tab route-btn" data-page="messages" type="button">Messages</button>
       </div>
       <section id="overview" class="page active" aria-labelledby="overview-title"></section>
+      <section id="opportunity-atlas" class="page" aria-labelledby="opportunity-atlas-title"></section>
       <section id="discovery" class="page" aria-labelledby="discovery-title"></section>
       <section id="detail" class="page" aria-labelledby="detail-title"></section>
       <section id="builder-profile" class="page" aria-labelledby="builder-profile-title"></section>
@@ -53,7 +60,7 @@
       <section id="submit" class="page" aria-labelledby="submit-title"></section>
     </main>
 
-    <script src="../data/oecd-data.js"></script>
-    <script src="../app.js"></script>
+    <script src="../data/oecd-data.js?v=flow-leader"></script>
+    <script src="../app.js?v=flow-leader-8"></script>
   </body>
 </html>
