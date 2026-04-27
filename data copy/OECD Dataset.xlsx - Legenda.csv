@@ -1,0 +1,54 @@
+,,,
+,,Variable Name,Variable Description
+,,Year,"Year in which the aid was committed (in the case of commitments) or disbursed (in the case of disbursements). For the foundations that signed an NDA to present their data only in aggregate form the variable year has value ""2020-2023"""
+,,organization_name,The name of the foundation that provided funding
+,,region_macro,Identifies the recipient at the lowest level of geographical granularity
+,,region_macro,Identifies the specifc geographical region of the recipient 
+,,country,The country/territory benefitting from the aid activity. All recipients must be on the DAC List of ODA Recipients.
+,,usd_disbursements_defl,Deflated amounts of funding disbursed at grant level in USD million (2023 constant)
+,,grant_recipient_project_title,Reports the name of the funding recipient or name of the project if the foundation implements directly the project
+,,project_description,Detailed description of the grant activity or project
+,,expected_duration,Reports duration of the project or funding horizon
+,,type_of_flow,Identifies at the project level if the activity represented cross-border or domestic philanthropy
+,,Donor_country,Identifies the country where the foundation has its legal base of operations
+,,financial_instrument,"The financial instrument of the activity. (Grant, Loan, Equity ecc)"
+,,modality_of_giving,"Indicate the modality of giving, which refers to the classification of transfers from the donor to the first recipient of funds extended. (core contributions, project intervention…)"
+,,gender_dimension,"Indicate if the project or grant directly targets gender equality through at least one of the presented channels : Discrimination in the family, Restricted physical integritym Access to financial and land resources, Civil Liberties"
+,,additional_info,field provided to include further informations to specify anything if needed
+,,gender_marker,"This marker is used to track aid to Gender Equality.
+It is intended to advance gender equality and women’s empowerment or reduce discrimination and inequalities based on sex. Gender equality is explicitly promoted in activity documentation through specific measures which:
+a) Reduce social, economic or political power inequalities between women and men, girls and boys, ensure that women benefit equally with men from the activity, or compensate for past discrimination; or
+b) Develop or strengthen gender equality or anti-discrimination policies, legislation or institutions.
+This approach requires analysing gender inequalities either separately or as an integral part of agencies’ standard procedures.
+Scored on a 0-2 basis where 0 indicates that Gender Equality is not targeted, 1 that it is a significant objective, and 2 that it is the principal objective of the project. Non-screened projects are marked as NULL."
+,,climate_change_mitigation,"This marker is used to track aid to Climate change - mitigation as part of the United Nations Framework Convention on Climate Change (UNFCCC). It contributes to the objective of stabilisation of greenhouse gas (GHG) concentrations in the atmosphere at a level that would prevent dangerous anthropogenic interference with the climate system by promoting efforts to reduce or limit GHG emissions or to enhance GHG removal by sinks, in line with the goals of the Paris Agreement.
+Scored on a 0-2 basis where 0 indicates that Climate change - mitigation is not targeted, 1 that it is a significant objective, and 2 that it is the principal objective of the project. Non-screened projects are marked as NULL."
+,,climate_change_adaptation,"This marker is used to track aid to Climate change - adaptation as part of the United Nations Framework Convention on Climate Change (UNFCCC). It intends to reduce the vulnerability of human or natural systems to the current and expected impacts of climate change, including climate variability, by maintaining or increasing resilience, through increased ability to adapt to, or absorb, climate change stresses, shocks and variability and/or by helping reduce exposure to them, in line with the Paris Agreement.
+Scored on a 0-2 basis where 0 indicates that Climate change - adaptation is not targeted, 1 that it is a significant objective, and 2 that it is the principal objective of the project. Non-screened projects are marked as NULL."
+,,subsector,includes the subsector code in line with OECD CRS reporting system of sectorial classification
+,,sdg_focus,Includes all the SDG targets relevant to the funding provided 
+,,row_id,Each project has an individual id which can be used to regroup activities after they have been splitted at the sector level when they presented multiple purpose codes 
+,,subsector_description,includes the subsector name in line with OECD CRS reporting system of sectorial classification
+,,Sector,includes the sector code in line with OECD CRS reporting system of sectorial classification
+,,sector_description,includes the sector name in line with OECD CRS reporting system of sectorial classification
+,,usd_commitment_defl,Deflated amounts committed in USD (2023 constant)
+,,channel_code,"The channel of delivery permits the identification of core funding to specific multilateral organisations and enables the calculation of aggregates on bilateral aid channelled through multilateral organisations, NGOs, PPPs and other channels. It also distinguishes between public and private implementing partners.
+The channel of delivery is the first implementing partner. It is the entity that has implementing responsibility over the funds and is normally linked to the extending agency  by a contract or other binding agreement, and is directly accountable to it. Where several levels of implementation are involved (e.g. when the extending agency hires a national implementer which in turn may hire a local implementer), report the first level of implementation as the channel of delivery.  Where activities have several implementers, the principal implementer should be reported (e.g. the entity receiving the most funding). In the case of loans, report the borrower (i.e. the first entity outside the donor country that receives the funds)."
+,,channel_name,"Channel name associated to the official channel code.
+The channel of delivery permits the identification of core funding to specific multilateral organisations and enables the calculation of aggregates on bilateral aid channelled through multilateral organisations, NGOs, PPPs and other channels. It also distinguishes between public and private implementing partners.
+The channel of delivery is the first implementing partner. It is the entity that has implementing responsibility over the funds and is normally linked to the extending agency  by a contract or other binding agreement, and is directly accountable to it. Where several levels of implementation are involved (e.g. when the extending agency hires a national implementer which in turn may hire a local implementer), the first level of implementation as the channel of delivery is reported.  Where activities have several implementers, the principal implementer is reported (e.g. the entity receiving the most funding). In the case of loans, the borrower is reported (i.e. the first entity outside the donor country that receives the funds)."
+,,channel_reported_name,"Channel name as reported.
+The channel of delivery permits the identification of core funding to specific multilateral organisations and enables the calculation of aggregates on bilateral aid channelled through multilateral organisations, NGOs, PPPs and other channels. It also distinguishes between public and private implementing partners.
+The channel of delivery is the first implementing partner. It is the entity that has implementing responsibility over the funds and is normally linked to the extending agency  by a contract or other binding agreement, and is directly accountable to it. Where several levels of implementation are involved (e.g. when the extending agency hires a national implementer which in turn may hire a local implementer), the first level of implementation as the channel of delivery is reported.  Where activities have several implementers, the principal implementer is reported (e.g. the entity receiving the most funding). In the case of loans, the borrower is reported (i.e. the first entity outside the donor country that receives the funds)."
+,,environment,"This marker is used to track aid to environment.
+The aid to environment marker is intended to produce an improvement, or something that is diagnosed as an improvement, in the physical and/or biological environment of the recipient country, area or target group concerned; or
+It includes specific action to integrate environmental concerns with a range of development objectives through institution building and/or capacity development.
+Scored on a 0-2 basis where 0 indicates that aid to environment is not targeted, 1 that it is a significant objective, and 2 that it is the principal objective of the project. Non-screened projects are marked as NULL."
+,,biodiversity,"This marker is used to track aid to biodiversity within the United Nations Convention on Biological Diversity (UNCBD). It promotes at least one of the three objectives of the Convention:  the conservation of bio-diversity, sustainable use of its components (ecosystems, species or genetic resources), or fair and equitable sharing of the benefits of the utilisation of genetic resources.
+Scored on a 0-2 basis where 0 indicates that Biodiversity is not targeted, 1 that it is a significant objective, and 2 that it is the principal objective of the project. Non-screened projects are marked as NULL."
+,,desertification,"This marker is used to track aid to combat desertification.
+Aid targeting the objectives of the Convention to Combat Desertification aims at combating desertification or mitigating the effects of drought in arid, semi-arid and dry sub-humid areas through prevention and/or reduction of land degradation, rehabilitation of partly degraded land, or reclamation of desertified land.
+Scored on a 0-2 basis where 0 indicates that combat desertification is not targeted, 1 that it is a significant objective, and 2 that it is the principal objective of the project. Non-screened projects are marked as NULL."
+,,nutrition,"This marker is used to track aid to Nutrition.
+It is intended to address the immediate or underlying determinants of malnutrition . This can encompass a range of projects across a variety of sectors, including humanitarian interventions, maternal health, WASH and agriculture.
+Scored on a 0-2 basis where 0 indicates that Nutrition is not targeted, 1 that it is a significant objective, and 2 that it is the principal objective of the project. Non-screened projects are marked as NULL."
