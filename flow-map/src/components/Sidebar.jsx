@@ -19,16 +19,6 @@ const TABS = [
     ),
   },
   {
-    id: 'pipeline',
-    label: 'Project Pipeline',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>
-        <line x1="6" y1="20" x2="6" y2="14"/>
-      </svg>
-    ),
-  },
-  {
     id: 'history',
     label: 'Funding History',
     icon: (
@@ -153,17 +143,21 @@ export default function Sidebar({ page, onNavigate, collapsed, onToggle }) {
         onClick={onToggle}
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         style={{
-          margin: '8px', padding: '8px', borderRadius: 7, border: 'none',
-          background: 'rgba(255,255,255,0.05)', color: '#475569',
-          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
+          margin: '8px', padding: collapsed ? '10px 0' : '9px 12px',
+          borderRadius: 8, border: '1px solid rgba(35,102,201,0.4)',
+          background: 'rgba(35,102,201,0.15)', color: '#60a5fa',
+          cursor: 'pointer', display: 'flex', alignItems: 'center',
+          justifyContent: collapsed ? 'center' : 'flex-start',
+          gap: 8, flexShrink: 0, width: collapsed ? 'calc(100% - 16px)' : 'calc(100% - 16px)',
+          fontSize: 12, fontWeight: 500,
         }}
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
           {collapsed
             ? <><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></>
             : <><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></>}
         </svg>
+        {!collapsed && <span>Collapse</span>}
       </button>
     </aside>
   )

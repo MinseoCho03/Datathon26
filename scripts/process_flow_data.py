@@ -345,6 +345,85 @@ projects_raw.sort(key=lambda x: -x['amount'])
 projects_out = projects_raw[:1000]
 print(f'OECD projects (top 1000 of {len(projects_raw)}): first="{projects_out[0]["title"][:60]}"')
 
+# ── Gates Foundation specific aggregations ───────────────────────────────────
+gates_rows = [r for r in rows if str(r.get('organization_name') or '').strip() == 'Gates Foundation']
+print(f'Gates Foundation rows: {len(gates_rows)}')
+
+gates_year   = defaultdict(float)
+gates_sector = defaultdict(float)
+gates_country= defaultdict(float)
+gates_region = defaultdict(float)
+
+for r in gates_rows:
+    yr_str = str(r.get('year') or '').split('-')[0].strip()
+    try:
+        yr = int(yr_str)
+    except ValueError:
+        continue
+    amt = to_float(r.get('usd_disbursements_defl'))
+    if amt <= 0:
+        continue
+    country = str(r.get('country') or '').strip()
+    sector_raw = str(r.get('sector_description') or '').strip()
+    region_mac = str(r.get('region_macro') or '').strip()
+
+    gates_year[yr] += amt
+    gates_sector[clean_sector(sector_raw)] += amt
+    if not is_regional(country):
+        gates_country[country] += amt
+    if region_mac and not is_regional(region_mac):
+        gates_region[region_mac] += amt
+
+gates_total = sum(gates_year.values())
+gates_year_trend = [{'year': yr, 'amount': round(gates_year.get(yr, 0), 4)} for yr in all_years]
+gates_by_sector  = sorted([{'sector': k, 'amount': round(v, 4)} for k, v in gates_sector.items() if k not in ('Unspecified','Other','Admin')], key=lambda x: -x['amount'])
+gates_by_country = sorted([{'country': k, 'amount': round(v, 4)} for k, v in gates_country.items()], key=lambda x: -x['amount'])[:12]
+gates_by_region  = sorted([{'region': k, 'amount': round(v, 4)} for k, v in gates_region.items()], key=lambda x: -x['amount'])
+
+# Gates-specific deduplicated projects
+gates_proj_by_id = defaultdict(list)
+for r in gates_rows:
+    rid = str(r.get('row_id') or '').strip()
+    if not rid:
+        continue
+    country = str(r.get('country') or '').strip()
+    if is_regional(country):
+        continue
+    title = str(r.get('grant_recipient_project_title') or '').strip()
+    desc  = str(r.get('project_description') or '').strip()
+    if not title or not desc or len(title) < 6:
+        continue
+    if to_float(r.get('usd_disbursements_defl')) <= 0:
+        continue
+    gates_proj_by_id[rid].append(r)
+
+gates_projects = []
+for rid, rrows in gates_proj_by_id.items():
+    best = max(rrows, key=lambda x: to_float(x.get('usd_disbursements_defl')))
+    yr_str = str(best.get('year') or '').split('-')[0].strip()
+    try:
+        yr = int(yr_str)
+    except ValueError:
+        continue
+    sector_raw = str(best.get('sector_description') or '').strip()
+    gates_projects.append({
+        'id':          str(best.get('row_id') or '').strip(),
+        'title':       str(best.get('grant_recipient_project_title') or '').strip(),
+        'description': str(best.get('project_description') or '').strip()[:400],
+        'org':         'Gates Foundation',
+        'donorCountry':'United States',
+        'country':     str(best.get('country') or '').strip(),
+        'region':      str(best.get('region') or '').strip(),
+        'regionMacro': str(best.get('region_macro') or '').strip(),
+        'sector':      clean_sector(sector_raw),
+        'subsector':   str(best.get('subsector_description') or '').strip()[:80],
+        'amount':      round(to_float(best.get('usd_disbursements_defl')), 4),
+        'year':        yr,
+        'duration':    str(best.get('expected_duration') or '').strip(),
+    })
+gates_projects.sort(key=lambda x: -x['amount'])
+print(f'Gates projects: {len(gates_projects)}, total: {fmt(gates_total)}')
+
 # ── Global metrics ────────────────────────────────────────────────────────────
 total_funding = sum(r['amount'] for r in clean_rows)
 
@@ -363,6 +442,16 @@ output = {
     'donorCountries': donor_countries,
     'records': records,
     'projects': projects_out,
+    'gatesFunding': {
+        'org': 'Gates Foundation',
+        'total': round(gates_total, 2),
+        'totalLabel': fmt(gates_total),
+        'yearTrend': gates_year_trend,
+        'bySector':  gates_by_sector,
+        'byCountry': gates_by_country,
+        'byRegion':  gates_by_region,
+        'projects':  gates_projects,
+    },
 }
 
 out_path = '/Users/lerowang/Desktop/Datathon26/flow-map/public/flow-data.json'

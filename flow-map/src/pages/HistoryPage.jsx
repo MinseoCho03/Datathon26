@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, Cell } from 'recharts'
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, Legend } from 'recharts'
 
 function fmt(v) {
   v = Number(v || 0)
@@ -8,18 +8,17 @@ function fmt(v) {
   return `$${Math.round(v*1000)}K`
 }
 
+const COLORS = ['#60a5fa','#34d399','#f59e0b','#f472b6','#a78bfa','#fb923c','#22d3ee','#4ade80']
+
 const TT = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null
   return (
-    <div style={{ background: '#0f1e31', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#c8dff2' }}>
+    <div style={{ background: '#0b1829', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#c8dff2' }}>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
-      {payload.map(p => <div key={p.name} style={{ color: p.color }}>{p.name}: {fmt(p.value)}</div>)}
+      {payload.map(p => <div key={p.name} style={{ color: p.color || '#c8dff2' }}>{p.name ? `${p.name}: ` : ''}{fmt(p.value)}</div>)}
     </div>
   )
 }
-
-const COLORS = ['#60a5fa','#34d399','#f59e0b','#f472b6','#a78bfa','#fb923c','#22d3ee']
-const SECTOR_COLORS = { 'Health':'#34d399','Education':'#60a5fa','Agriculture':'#f59e0b','Financial Services':'#a78bfa','Social Services':'#fb923c','Gov & Civil Society':'#22d3ee','Reproductive Health':'#f472b6' }
 
 function ChartCard({ title, sub, children }) {
   return (
@@ -31,87 +30,104 @@ function ChartCard({ title, sub, children }) {
   )
 }
 
+function Kpi({ label, value, sub }) {
+  return (
+    <div style={{ background: '#0f1e31', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '14px 18px' }}>
+      <p style={{ fontSize: 11, color: '#475569', marginBottom: 4 }}>{label}</p>
+      <p style={{ fontSize: 20, fontWeight: 700, color: '#e2eaf4' }}>{value}</p>
+      {sub && <p style={{ fontSize: 11, color: '#334155', marginTop: 3 }}>{sub}</p>}
+    </div>
+  )
+}
+
 export default function HistoryPage({ data }) {
-  const yearly = data.fundingByYear || []
+  const gf = data.gatesFunding || {}
 
-  // Year totals from records
-  const yearTotals = useMemo(() => {
-    const m = {}
-    ;(data.records || []).forEach(r => { m[r.year] = (m[r.year] || 0) + r.amount })
-    return (data.years || []).map(yr => ({ year: String(yr), amount: m[yr] || 0 }))
-  }, [data])
+  const yearTrend  = gf.yearTrend  || []
+  const bySector   = (gf.bySector  || []).slice(0, 8).map(s => ({ name: s.sector,  amount: s.amount }))
+  const byCountry  = (gf.byCountry || []).slice(0, 10).map(c => ({ name: c.country, amount: c.amount }))
+  const byRegion   = (gf.byRegion  || []).map(r => ({ name: r.region,  amount: r.amount }))
 
-  // Sector × year breakdown
-  const topSectors = useMemo(() => {
-    const m = {}
-    ;(data.records || []).forEach(r => { m[r.sector] = (m[r.sector] || 0) + r.amount })
-    return Object.entries(m).sort((a,b) => b[1]-a[1]).slice(0,6).map(([s]) => s)
-  }, [data])
+  // Year-over-year delta
+  const delta = useMemo(() => {
+    if (yearTrend.length < 2) return null
+    const first = yearTrend[0].amount
+    const last  = yearTrend[yearTrend.length - 1].amount
+    const pct   = first ? Math.round(((last - first) / first) * 100) : 0
+    return { pct, dir: pct >= 0 ? '+' : '' }
+  }, [yearTrend])
 
-  const sectorByYear = useMemo(() => {
-    const rows = {}
-    ;(data.records || []).forEach(r => {
-      if (!topSectors.includes(r.sector)) return
-      const k = String(r.year)
-      if (!rows[k]) rows[k] = { year: k }
-      rows[k][r.sector] = (rows[k][r.sector] || 0) + r.amount
-    })
-    return (data.years || []).map(yr => rows[String(yr)] || { year: String(yr) })
-  }, [data, topSectors])
-
-  // Donor × year
-  const donorByYear = useMemo(() => {
-    const donors = {}
-    ;(data.records || []).forEach(r => { donors[r.donorCountry] = (donors[r.donorCountry] || 0) + r.amount })
-    const top = Object.entries(donors).sort((a,b) => b[1]-a[1]).slice(0,5).map(([d]) => d)
-    const rows = {}
-    ;(data.records || []).forEach(r => {
-      if (!top.includes(r.donorCountry)) return
-      const k = String(r.year)
-      if (!rows[k]) rows[k] = { year: k }
-      rows[k][r.donorCountry] = (rows[k][r.donorCountry] || 0) + r.amount
-    })
-    return { rows: (data.years||[]).map(yr => rows[String(yr)] || { year: String(yr) }), donors: top }
-  }, [data])
+  const uniqueRecip = new Set((gf.projects || []).map(p => p.country)).size
 
   return (
     <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <ChartCard title="Total Funding by Year" sub="All records, USD millions deflated">
+      {/* Header note */}
+      <div style={{ background: 'rgba(35,102,201,0.08)', border: '1px solid rgba(35,102,201,0.2)', borderRadius: 10, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,#2366c9,#0d846a)', display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 800, color: '#fff', flexShrink: 0 }}>GF</div>
+        <p style={{ fontSize: 12, color: '#7ab4d8' }}>
+          All charts on this page show <strong style={{ color: '#c8dff2' }}>Gates Foundation</strong> disbursements only — {(gf.projects || []).length.toLocaleString()} grants across 2020–2023.
+        </p>
+      </div>
+
+      {/* KPIs */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
+        <Kpi label="Total Disbursed" value={gf.totalLabel || fmt(gf.total)} sub="Gates Foundation, 2020–2023" />
+        <Kpi label="Annual Average" value={fmt((gf.total || 0) / 4)} sub="Across 4 years" />
+        <Kpi label="Recipient Countries" value={uniqueRecip} sub="Mapped recipient countries" />
+        <Kpi label="Trend" value={delta ? `${delta.dir}${delta.pct}%` : '—'} sub={`2020 → ${yearTrend[yearTrend.length-1]?.year || 2023}`} />
+      </div>
+
+      {/* Year trend line */}
+      <ChartCard title="Annual Disbursements" sub="Gates Foundation total per year, USD millions">
         <ResponsiveContainer width="100%" height={200}>
-          <LineChart data={yearTotals} margin={{ left: 0, right: 16, top: 8, bottom: 0 }}>
+          <LineChart data={yearTrend.map(y => ({ year: String(y.year), amount: y.amount }))} margin={{ left: 0, right: 24, top: 8, bottom: 0 }}>
             <XAxis dataKey="year" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
             <YAxis hide />
             <Tooltip content={<TT />} />
-            <Line type="monotone" dataKey="amount" stroke="#2366c9" strokeWidth={3} dot={{ r: 5, fill: '#0d846a', strokeWidth: 0 }} activeDot={{ r: 7 }} name="Total" />
+            <Line type="monotone" dataKey="amount" stroke="#2366c9" strokeWidth={3} dot={{ r: 5, fill: '#0d846a', strokeWidth: 0 }} activeDot={{ r: 7 }} name="Disbursed" />
           </LineChart>
         </ResponsiveContainer>
       </ChartCard>
 
-      <ChartCard title="Sector Breakdown by Year" sub="Top 6 sectors, stacked">
-        <ResponsiveContainer width="100%" height={240}>
-          <BarChart data={sectorByYear} margin={{ left: 0, right: 16, top: 8, bottom: 0 }}>
-            <XAxis dataKey="year" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
-            <YAxis hide />
-            <Tooltip content={<TT />} />
-            <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: '#64748b' }} />
-            {topSectors.map((s, i) => (
-              <Bar key={s} dataKey={s} stackId="a" fill={SECTOR_COLORS[s] || COLORS[i % COLORS.length]} maxBarSize={40} />
-            ))}
-          </BarChart>
-        </ResponsiveContainer>
-      </ChartCard>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        {/* Sector breakdown */}
+        <ChartCard title="Disbursements by Sector" sub="Gates Foundation priority areas">
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={bySector} layout="vertical" margin={{ left: 0, right: 16, top: 0, bottom: 0 }}>
+              <XAxis type="number" hide />
+              <YAxis type="category" dataKey="name" width={120} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+              <Tooltip content={<TT />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
+              <Bar dataKey="amount" radius={[0,4,4,0]} maxBarSize={16}>
+                {bySector.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
 
-      <ChartCard title="Top Donor Countries by Year" sub="Top 5 donor countries over time">
+        {/* Region breakdown */}
+        <ChartCard title="Disbursements by Region" sub="Where Gates Foundation money flows">
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={byRegion} layout="vertical" margin={{ left: 0, right: 16, top: 0, bottom: 0 }}>
+              <XAxis type="number" hide />
+              <YAxis type="category" dataKey="name" width={80} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+              <Tooltip content={<TT />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
+              <Bar dataKey="amount" radius={[0,4,4,0]} maxBarSize={18} fill="#0d846a" />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </div>
+
+      {/* Top recipient countries */}
+      <ChartCard title="Top Recipient Countries" sub="Gates Foundation grants by recipient country (excludes regional/bilateral buckets)">
         <ResponsiveContainer width="100%" height={220}>
-          <LineChart data={donorByYear.rows} margin={{ left: 0, right: 16, top: 8, bottom: 0 }}>
-            <XAxis dataKey="year" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
-            <YAxis hide />
-            <Tooltip content={<TT />} />
-            <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: '#64748b' }} />
-            {donorByYear.donors.map((d, i) => (
-              <Line key={d} type="monotone" dataKey={d} stroke={COLORS[i % COLORS.length]} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} name={d.replace("China (People's Republic of)",'China')} />
-            ))}
-          </LineChart>
+          <BarChart data={byCountry} layout="vertical" margin={{ left: 0, right: 16, top: 0, bottom: 0 }}>
+            <XAxis type="number" hide />
+            <YAxis type="category" dataKey="name" width={110} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+            <Tooltip content={<TT />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
+            <Bar dataKey="amount" radius={[0,4,4,0]} maxBarSize={16}>
+              {byCountry.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+            </Bar>
+          </BarChart>
         </ResponsiveContainer>
       </ChartCard>
     </div>

@@ -2,14 +2,12 @@ import { useState, useEffect } from 'react'
 import Sidebar from './components/Sidebar.jsx'
 import MapPage from './pages/MapPage.jsx'
 import ProjectsPage from './pages/ProjectsPage.jsx'
-import PipelinePage from './pages/PipelinePage.jsx'
 import HistoryPage from './pages/HistoryPage.jsx'
 import SignalsPage from './pages/SignalsPage.jsx'
 
 const PAGE_TITLES = {
   map:      'Follow the Money',
   projects: 'Discover Projects',
-  pipeline: 'Project Pipeline',
   history:  'Funding History',
   signals:  'Funding Signals',
 }
@@ -72,7 +70,6 @@ export default function App() {
         <main style={{ flex: 1, overflowY: 'auto', background: '#0b1829' }}>
           {page === 'map'      && <MapPage      data={data} />}
           {page === 'projects' && <ProjectsPage data={data} />}
-          {page === 'pipeline' && <PipelinePage data={data} />}
           {page === 'history'  && <HistoryPage  data={data} />}
           {page === 'signals'  && <SignalsPage  data={data} />}
         </main>
