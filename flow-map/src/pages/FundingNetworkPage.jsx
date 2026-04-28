@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide } from 'd3-force'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ScatterChart, Scatter, ZAxis, PieChart, Pie, Cell, Legend, CartesianGrid } from 'recharts'
 
@@ -238,7 +238,7 @@ function CoverageColumn({ title, subtitle, countries, empty, selectedCountry, hi
   )
 }
 
-const GW = 780, GH = 520
+const GW = 780, GH = 780
 // Approximate px per character for 11px bold sans-serif
 const CHAR_W = 6.8
 const BOX_PAD = 18
@@ -253,16 +253,36 @@ function funderBoxWidth(label) {
   return Math.min(capped.length * CHAR_W + BOX_PAD, MAX_BOX_W)
 }
 
-const GRAPH_LEGEND = [['#60a5fa', 'Funder'], ['#34d399', 'Shared'], ['#f59e0b', 'Single-source']]
+const GRAPH_GUTTER = 22
+const GRAPH_ZOOM_MIN = 0.75
+const GRAPH_ZOOM_MAX = 3.2
+const GRAPH_DRAG_THRESHOLD = 6
+const GRAPH_LEGEND = [['#60a5fa', 'Funder'], ['#34d399', 'Shared'], ['#f59e0b', 'Single-source'], ['#f87171', 'Weak coverage']]
+
+function clampZoom(value) {
+  return Math.max(GRAPH_ZOOM_MIN, Math.min(GRAPH_ZOOM_MAX, Number(value.toFixed(2))))
+}
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, value))
+}
 
 function CoverageGraph({ coverage, selectedFunders, selectedCountry, highlightedFunder, maxCountryWeight, onSelectCountry, onSelectFunder, onHoverCountry }) {
-  const { nodes, links, graphH } = useMemo(() => {
+  const svgRef = useRef(null)
+  const pointersRef = useRef(new Map())
+  const gestureRef = useRef(null)
+  const draggedRef = useRef(false)
+  const dragDistanceRef = useRef(0)
+  const [viewport, setViewport] = useState({ cx: GW / 2, cy: GH / 2, zoom: 1 })
+
+  const { nodes, links, graphSize, displayH } = useMemo(() => {
     const visible = coverage.countries          // show ALL countries, no slice
     const visibleSet = new Set(visible.map(c => c.country))
 
-    // Canvas height scales with node count so every node has room
+    // Square canvas keeps the force layout circular instead of flattened.
     const totalNodes = visible.length + selectedFunders.length
-    const dynH = Math.max(520, Math.min(1200, totalNodes * 14))
+    const dynSize = Math.max(620, Math.min(1040, totalNodes * 13))
+    const dynDisplayH = Math.max(520, Math.min(760, dynSize))
 
     const nodeArr = [
       ...selectedFunders.map(name => ({
@@ -278,20 +298,20 @@ function CoverageGraph({ coverage, selectedFunders, selectedCountry, highlighted
       .filter(r => visibleSet.has(r.country))
       .map(r => ({ source: r.funder, target: r.country, weight: r.weight }))
 
-    if (!nodeArr.length) return { nodes: [], links: [], graphH: dynH }
+    if (!nodeArr.length) return { nodes: [], links: [], graphSize: dynSize, displayH: dynDisplayH }
 
     forceSimulation(nodeArr)
       .force('link', forceLink(linkArr).id(d => d.id).distance(160).strength(0.4))
       .force('charge', forceManyBody().strength(-520))
-      .force('center', forceCenter(GW / 2, dynH / 2))
+      .force('center', forceCenter(dynSize / 2, dynSize / 2))
       .force('collide', forceCollide(n => n.type === 'funder' ? (n.boxW / 2 + 12) : 48).iterations(4))
       .stop()
       .tick(300)
 
     nodeArr.forEach(n => {
       const pad = n.type === 'funder' ? (n.boxW / 2 + 14) : 52
-      n.x = Math.max(pad, Math.min(GW - pad, n.x ?? GW / 2))
-      n.y = Math.max(34, Math.min(dynH - 34, n.y ?? dynH / 2))
+      n.x = Math.max(pad, Math.min(dynSize - pad, n.x ?? dynSize / 2))
+      n.y = Math.max(34, Math.min(dynSize - 34, n.y ?? dynSize / 2))
     })
 
     // ── Label deconfliction ──────────────────────────────────────────────────
@@ -307,7 +327,7 @@ function CoverageGraph({ coverage, selectedFunders, selectedCountry, highlighted
       }
       const r = 6 + Math.min(10, ((n.totalWeight ?? 0) / maxTW) * 10)
       const lw = truncate(n.label, 18).length * LCHAR_W
-      const right = n.x <= GW / 2
+      const right = n.x <= dynSize / 2
       return { n, isFunder: false, r, lw, right }
     })
 
@@ -345,8 +365,153 @@ function CoverageGraph({ coverage, selectedFunders, selectedCountry, highlighted
     }
     // ────────────────────────────────────────────────────────────────────────
 
-    return { nodes: nodeArr, links: linkArr }
+    nodeArr.forEach(n => {
+      if (n.type !== 'funder') {
+        n._adjY = Math.max(12 - n.y, Math.min(dynSize - 12 - n.y, n._adjY ?? 0))
+      }
+    })
+
+    return { nodes: nodeArr, links: linkArr, graphSize: dynSize, displayH: dynDisplayH }
   }, [selectedFunders, coverage])
+
+  useEffect(() => {
+    setViewport({ cx: graphSize / 2, cy: graphSize / 2, zoom: 1 })
+    pointersRef.current.clear()
+    gestureRef.current = null
+    draggedRef.current = false
+    dragDistanceRef.current = 0
+  }, [graphSize, selectedFunders, coverage.countries.length])
+
+  const graphViewBox = useMemo(() => {
+    const base = graphSize + GRAPH_GUTTER * 2
+    const view = base / viewport.zoom
+    const viewX = viewport.cx - view / 2
+    const viewY = viewport.cy - view / 2
+    return `${viewX} ${viewY} ${view} ${view}`
+  }, [graphSize, viewport])
+
+  const zoomByAt = (clientX, clientY, factor) => {
+    setViewport(current => {
+      const svg = svgRef.current
+      if (!svg) return current
+      const rect = svg.getBoundingClientRect()
+      const safeZoom = clampZoom(current.zoom * factor)
+      const base = graphSize + GRAPH_GUTTER * 2
+      const oldView = base / current.zoom
+      const oldX = current.cx - oldView / 2
+      const oldY = current.cy - oldView / 2
+      const scale = Math.min(rect.width / oldView, rect.height / oldView)
+      const contentW = oldView * scale
+      const contentH = oldView * scale
+      const offsetX = (rect.width - contentW) / 2
+      const offsetY = (rect.height - contentH) / 2
+      const rx = clamp01((clientX - rect.left - offsetX) / contentW)
+      const ry = clamp01((clientY - rect.top - offsetY) / contentH)
+      const graphX = oldX + rx * oldView
+      const graphY = oldY + ry * oldView
+      const newView = base / safeZoom
+      return {
+        cx: graphX - (rx - 0.5) * newView,
+        cy: graphY - (ry - 0.5) * newView,
+        zoom: safeZoom,
+      }
+    })
+  }
+
+  const updatePan = (dx, dy) => {
+    const svg = svgRef.current
+    if (!svg) return
+    const rect = svg.getBoundingClientRect()
+    setViewport(current => {
+      const base = graphSize + GRAPH_GUTTER * 2
+      const view = base / current.zoom
+      const scale = Math.min(rect.width / view, rect.height / view)
+      return {
+        ...current,
+        cx: current.cx - dx / scale,
+        cy: current.cy - dy / scale,
+      }
+    })
+  }
+
+  const handleWheel = event => {
+    event.preventDefault()
+    const factor = event.deltaY > 0 ? 0.88 : 1.14
+    zoomByAt(event.clientX, event.clientY, factor)
+  }
+
+  const zoomByCenter = factor => {
+    setViewport(current => ({
+      ...current,
+      zoom: clampZoom(current.zoom * factor),
+    }))
+  }
+
+  const resetViewport = () => {
+    setViewport({ cx: graphSize / 2, cy: graphSize / 2, zoom: 1 })
+  }
+
+  const handlePointerDown = event => {
+    draggedRef.current = false
+    dragDistanceRef.current = 0
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    const points = [...pointersRef.current.values()]
+    const midX = points.length >= 2 ? (points[0].x + points[1].x) / 2 : event.clientX
+    const midY = points.length >= 2 ? (points[0].y + points[1].y) / 2 : event.clientY
+    gestureRef.current = {
+      lastX: midX,
+      lastY: midY,
+      dist: points.length >= 2 ? Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y) : 0,
+    }
+  }
+
+  const handlePointerMove = event => {
+    if (!pointersRef.current.has(event.pointerId)) return
+    const previous = pointersRef.current.get(event.pointerId)
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    const points = [...pointersRef.current.values()]
+
+    if (points.length >= 2) {
+      const [a, b] = points
+      const cx = (a.x + b.x) / 2
+      const cy = (a.y + b.y) / 2
+      const dist = Math.hypot(a.x - b.x, a.y - b.y)
+      const last = gestureRef.current || { lastX: cx, lastY: cy, dist }
+      if (last.dist > 0 && dist > 0) zoomByAt(cx, cy, dist / last.dist)
+      updatePan(cx - last.lastX, cy - last.lastY)
+      gestureRef.current = { lastX: cx, lastY: cy, dist }
+      dragDistanceRef.current += Math.hypot(cx - last.lastX, cy - last.lastY)
+      if (dragDistanceRef.current > GRAPH_DRAG_THRESHOLD) draggedRef.current = true
+      return
+    }
+
+    const dx = event.clientX - previous.x
+    const dy = event.clientY - previous.y
+    const move = Math.hypot(dx, dy)
+    if (move > 0) {
+      dragDistanceRef.current += move
+      updatePan(dx, dy)
+      if (dragDistanceRef.current > GRAPH_DRAG_THRESHOLD) draggedRef.current = true
+    }
+    gestureRef.current = { lastX: event.clientX, lastY: event.clientY, dist: 0 }
+  }
+
+  const handlePointerEnd = event => {
+    pointersRef.current.delete(event.pointerId)
+    const points = [...pointersRef.current.values()]
+    gestureRef.current = points.length
+      ? { lastX: points[0].x, lastY: points[0].y, dist: 0 }
+      : null
+    if (draggedRef.current) window.setTimeout(() => { draggedRef.current = false }, 0)
+    if (!points.length) window.setTimeout(() => { dragDistanceRef.current = 0 }, 0)
+  }
+
+  const runNodeAction = action => {
+    if (draggedRef.current) return
+    action()
+  }
+
+  const center = graphSize / 2
 
   return (
     <div style={{ border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, background: '#0b1829', overflow: 'hidden' }}>
@@ -355,17 +520,58 @@ function CoverageGraph({ coverage, selectedFunders, selectedCountry, highlighted
           <p style={{ color: '#e2eaf4', fontSize: 12, fontWeight: 800 }}>Funding network</p>
           <p style={{ ...S.subtle, marginTop: 2 }}>{selectedFunders.length} funder{selectedFunders.length !== 1 ? 's' : ''} · {coverage.countries.length} countries · force-directed layout</p>
         </div>
-        <div style={{ display: 'flex', gap: 12 }}>
-          {GRAPH_LEGEND.map(([color, label]) => (
-            <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color }}>
-              <svg width="8" height="8"><circle cx="4" cy="4" r="4" fill={color} /></svg>
-              {label}
-            </span>
-          ))}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {GRAPH_LEGEND.map(([color, label]) => (
+              <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color }}>
+                <svg width="8" height="8"><circle cx="4" cy="4" r="4" fill={color} /></svg>
+                {label}
+              </span>
+            ))}
+          </div>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: 3, borderRadius: 8, background: '#070f1c', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <button
+              type="button"
+              title="Zoom out"
+              onClick={() => zoomByCenter(0.85)}
+              style={{ ...S.quietButton, width: 26, height: 24, padding: 0, borderRadius: 6, fontSize: 15, lineHeight: 1 }}
+            >
+              −
+            </button>
+            <button
+              type="button"
+              title="Reset zoom"
+              onClick={resetViewport}
+              style={{ ...S.quietButton, minWidth: 46, height: 24, padding: '0 7px', borderRadius: 6, fontSize: 10 }}
+            >
+              {Math.round(viewport.zoom * 100)}%
+            </button>
+            <button
+              type="button"
+              title="Zoom in"
+              onClick={() => zoomByCenter(1.18)}
+              style={{ ...S.quietButton, width: 26, height: 24, padding: 0, borderRadius: 6, fontSize: 15, lineHeight: 1 }}
+            >
+              +
+            </button>
+          </div>
         </div>
       </div>
 
-      <svg viewBox={`0 0 ${GW} ${GH}`} width="100%" height={GH} style={{ display: 'block' }}>
+      <svg
+        ref={svgRef}
+        viewBox={graphViewBox}
+        width="100%"
+        height={displayH}
+        preserveAspectRatio="xMidYMid meet"
+        onWheel={handleWheel}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
+        onPointerLeave={handlePointerEnd}
+        style={{ display: 'block', overflow: 'hidden', touchAction: 'none', cursor: pointersRef.current.size ? 'grabbing' : 'grab' }}
+      >
         {/* Edges */}
         {links.map((link, i) => {
           const src = typeof link.source === 'object' ? link.source : null
@@ -399,7 +605,7 @@ function CoverageGraph({ coverage, selectedFunders, selectedCountry, highlighted
           const emphStroke = (isSelected || isHighlighted || related) ? '#93c5fd' : stroke
 
           // Recipient labels flip side based on which half of the canvas they're in
-          const labelRight = !isFunder && (node.x ?? GW / 2) <= GW / 2
+          const labelRight = !isFunder && (node.x ?? center) <= center
           const textX = isFunder ? 0 : labelRight ? (r + 6) : -(r + 6)
           const textAnchor = isFunder ? 'middle' : labelRight ? 'start' : 'end'
 
@@ -411,8 +617,8 @@ function CoverageGraph({ coverage, selectedFunders, selectedCountry, highlighted
 
           return (
             <g key={node.id}
-              transform={`translate(${(node.x ?? GW / 2).toFixed(1)},${(node.y ?? GH / 2).toFixed(1)})`}
-              onClick={() => isFunder ? onSelectFunder(node.id) : onSelectCountry(node)}
+              transform={`translate(${(node.x ?? center).toFixed(1)},${(node.y ?? center).toFixed(1)})`}
+              onClick={() => runNodeAction(() => isFunder ? onSelectFunder(node.id) : onSelectCountry(node))}
               onMouseEnter={() => !isFunder && onHoverCountry(node)}
               onMouseLeave={() => !isFunder && onHoverCountry(null)}
               style={{ cursor: 'pointer' }}
