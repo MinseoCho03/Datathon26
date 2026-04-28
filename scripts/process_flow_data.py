@@ -480,6 +480,39 @@ source_donors = {
     for r in source_rows
     if str(r.get('Donor_country') or '').strip()
 }
+source_by_year = defaultdict(lambda: {
+    'totalFunding': 0.0,
+    'recipientSet': set(),
+    'donorSet': set(),
+    'recordCount': 0,
+})
+for r in source_rows:
+    yr_str = str(r.get('year') or '').split('-')[0].strip()
+    try:
+        yr = int(yr_str)
+    except ValueError:
+        continue
+
+    country = str(r.get('country') or '').strip()
+    donor = str(r.get('Donor_country') or '').strip()
+    metric = source_by_year[yr]
+    metric['totalFunding'] += to_float(r.get('usd_disbursements_defl'))
+    metric['recordCount'] += 1
+    if country:
+        metric['recipientSet'].add(country)
+    if donor:
+        metric['donorSet'].add(donor)
+
+source_metrics_by_year = {
+    str(yr): {
+        'totalFunding': round(metric['totalFunding'], 2),
+        'totalFundingLabel': fmt(metric['totalFunding']),
+        'recipientCount': len(metric['recipientSet']),
+        'donorCount': len(metric['donorSet']),
+        'recordCount': metric['recordCount'],
+    }
+    for yr, metric in sorted(source_by_year.items())
+}
 mapped_total_funding = sum(r['amount'] for r in clean_rows)
 
 output = {
@@ -496,6 +529,7 @@ output = {
         'mappedRecordCount': len(clean_rows),
         'projectCount': len(projects_raw),
     },
+    'metricsByYear': source_metrics_by_year,
     'years': all_years,
     'sectors': sectors_list[:15],
     'recipients': recipients,
