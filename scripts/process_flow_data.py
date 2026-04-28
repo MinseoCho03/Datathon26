@@ -5,6 +5,9 @@ Filters regional/unspecified entries, aggregates flows, adds coordinates.
 """
 import csv, json, math, re
 from collections import defaultdict
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
 
 # ── Coordinates (lat, lon) for all countries in the dataset ─────────────────
 COORDS = {
@@ -146,8 +149,30 @@ def fmt(millions):
         return f'${v:.1f}M'
     return f'${v*1000:.0f}K'
 
+def clean_text(v):
+    return re.sub(r'\s+', ' ', str(v or '').strip())
+
+def fallback_project_title(r):
+    title = clean_text(r.get('grant_recipient_project_title'))
+    if len(title) >= 6:
+        return title
+
+    desc = clean_text(r.get('project_description'))
+    if len(desc) >= 6:
+        return desc[:90].rstrip(' ,.;:-')
+
+    subsector = clean_text(r.get('subsector_description'))
+    country = clean_text(r.get('country'))
+    if subsector and country:
+        return f'{subsector} in {country}'
+    if subsector:
+        return subsector
+
+    sector = clean_sector(r.get('sector_description'))
+    return f'{sector} funding in {country}' if country else f'{sector} funding'
+
 # ── Load CSV ─────────────────────────────────────────────────────────────────
-csv_path = '/Users/lerowang/Desktop/Datathon26/data/OECD Dataset.xlsx - complete_p4d3_df.csv'
+csv_path = ROOT / 'data' / 'OECD Dataset.xlsx - complete_p4d3_df.csv'
 with open(csv_path, encoding='utf-8') as f:
     rows = list(csv.DictReader(f))
 
@@ -302,10 +327,6 @@ for r in rows:
     country = str(r.get('country') or '').strip()
     if is_regional(country):
         continue
-    title = str(r.get('grant_recipient_project_title') or '').strip()
-    desc  = str(r.get('project_description') or '').strip()
-    if not title or not desc or len(title) < 6:
-        continue
     amt = to_float(r.get('usd_disbursements_defl'))
     if amt <= 0:
         continue
@@ -325,8 +346,8 @@ for rid, rrows in proj_by_id.items():
     subsector  = str(best.get('subsector_description') or '').strip()
     projects_raw.append({
         'id':          rid,
-        'title':       str(best.get('grant_recipient_project_title') or '').strip(),
-        'description': str(best.get('project_description') or '').strip()[:400],
+        'title':       fallback_project_title(best),
+        'description': clean_text(best.get('project_description'))[:400],
         'org':         str(best.get('organization_name') or '').strip(),
         'donorCountry': donor,
         'country':     str(best.get('country') or '').strip(),
@@ -387,10 +408,6 @@ for r in gates_rows:
     country = str(r.get('country') or '').strip()
     if is_regional(country):
         continue
-    title = str(r.get('grant_recipient_project_title') or '').strip()
-    desc  = str(r.get('project_description') or '').strip()
-    if not title or not desc or len(title) < 6:
-        continue
     if to_float(r.get('usd_disbursements_defl')) <= 0:
         continue
     gates_proj_by_id[rid].append(r)
@@ -406,8 +423,8 @@ for rid, rrows in gates_proj_by_id.items():
     sector_raw = str(best.get('sector_description') or '').strip()
     gates_projects.append({
         'id':          str(best.get('row_id') or '').strip(),
-        'title':       str(best.get('grant_recipient_project_title') or '').strip(),
-        'description': str(best.get('project_description') or '').strip()[:400],
+        'title':       fallback_project_title(best),
+        'description': clean_text(best.get('project_description'))[:400],
         'org':         'Gates Foundation',
         'donorCountry':'United States',
         'country':     str(best.get('country') or '').strip(),
@@ -451,15 +468,32 @@ for (country, sector), orgs in org_by_cs.items():
 print(f'orgsByCS entries: {len(orgs_by_cs_out)}')
 
 # ── Global metrics ────────────────────────────────────────────────────────────
-total_funding = sum(r['amount'] for r in clean_rows)
+source_rows = [r for r in rows if to_float(r.get('usd_disbursements_defl')) > 0]
+source_total_funding = sum(to_float(r.get('usd_disbursements_defl')) for r in source_rows)
+source_recipients = {
+    str(r.get('country') or '').strip()
+    for r in source_rows
+    if str(r.get('country') or '').strip()
+}
+source_donors = {
+    str(r.get('Donor_country') or '').strip()
+    for r in source_rows
+    if str(r.get('Donor_country') or '').strip()
+}
+mapped_total_funding = sum(r['amount'] for r in clean_rows)
 
 output = {
     'metrics': {
-        'totalFunding': round(total_funding, 2),
-        'totalFundingLabel': fmt(total_funding),
-        'recipientCount': len(recipients),
-        'donorCount': len(donor_countries),
-        'recordCount': len(clean_rows),
+        'totalFunding': round(source_total_funding, 2),
+        'totalFundingLabel': fmt(source_total_funding),
+        'recipientCount': len(source_recipients),
+        'donorCount': len(source_donors),
+        'recordCount': len(source_rows),
+        'mappedTotalFunding': round(mapped_total_funding, 2),
+        'mappedTotalFundingLabel': fmt(mapped_total_funding),
+        'mappedRecipientCount': len(recipients),
+        'mappedDonorCount': len(donor_countries),
+        'mappedRecordCount': len(clean_rows),
         'projectCount': len(projects_raw),
     },
     'years': all_years,
@@ -481,18 +515,20 @@ output = {
 }
 
 import os
-os.makedirs('/Users/lerowang/Desktop/Datathon26/flow-map/public', exist_ok=True)
+public_dir = ROOT / 'flow-map' / 'public'
+os.makedirs(public_dir, exist_ok=True)
 
-out_path = '/Users/lerowang/Desktop/Datathon26/flow-map/public/flow-data.json'
+out_path = public_dir / 'flow-data.json'
 with open(out_path, 'w') as f:
     json.dump(output, f, separators=(',', ':'))
 print(f'\nWrote {out_path} ({os.path.getsize(out_path)//1024:.0f} KB)')
 
-projects_path = '/Users/lerowang/Desktop/Datathon26/flow-map/public/projects.json'
+projects_path = public_dir / 'projects.json'
 with open(projects_path, 'w') as f:
     json.dump(projects_raw, f, separators=(',', ':'))
 print(f'Wrote {projects_path} ({os.path.getsize(projects_path)//1024:.0f} KB, {len(projects_raw)} projects)')
 print(f'Recipients: {len(recipients)}, Donors: {len(donor_countries)}, Records: {len(records)}')
-print(f'Total funding: {fmt(total_funding)}')
+print(f'Total funding: {fmt(source_total_funding)}')
+print(f'Mapped country-level funding: {fmt(mapped_total_funding)}')
 print(f'Years: {all_years}')
 print(f'Sectors: {sectors_list[:8]}')
