@@ -239,18 +239,6 @@ function CoverageColumn({ title, subtitle, countries, empty, selectedCountry, hi
 }
 
 const GW = 780, GH = 520
-// Approximate px per character for 11px bold sans-serif
-const CHAR_W = 6.8
-const BOX_PAD = 18
-const MAX_BOX_W = 160
-const MAX_BOX_CHARS = Math.floor((MAX_BOX_W - BOX_PAD) / CHAR_W) // ~21 chars before ellipsis
-
-function funderBoxWidth(label) {
-  const capped = label.length > MAX_BOX_CHARS ? label.slice(0, MAX_BOX_CHARS - 1) + '…' : label
-  return Math.min(capped.length * CHAR_W + BOX_PAD, MAX_BOX_W)
-}
-
-const GRAPH_LEGEND = [['#60a5fa', 'Funder'], ['#34d399', 'Shared'], ['#f59e0b', 'Single-source']]
 
 function CoverageGraph({ coverage, selectedFunders, selectedCountry, highlightedFunder, maxCountryWeight, onSelectCountry, onSelectFunder, onHoverCountry }) {
   const { nodes, links } = useMemo(() => {
@@ -258,10 +246,7 @@ function CoverageGraph({ coverage, selectedFunders, selectedCountry, highlighted
     const visibleSet = new Set(visible.map(c => c.country))
 
     const nodeArr = [
-      ...selectedFunders.map(name => ({
-        id: name, type: 'funder', label: name,
-        boxW: funderBoxWidth(name),
-      })),
+      ...selectedFunders.map(name => ({ id: name, type: 'funder', label: name })),
       ...visible.map(c => ({
         id: c.country, country: c.country, type: 'recipient', label: c.country,
         status: c.status, funders: c.funders, totalWeight: c.totalWeight, mainSector: c.mainSector,
@@ -274,21 +259,22 @@ function CoverageGraph({ coverage, selectedFunders, selectedCountry, highlighted
     if (!nodeArr.length) return { nodes: [], links: [] }
 
     forceSimulation(nodeArr)
-      .force('link', forceLink(linkArr).id(d => d.id).distance(160).strength(0.4))
-      .force('charge', forceManyBody().strength(-520))
+      .force('link', forceLink(linkArr).id(d => d.id).distance(120).strength(0.5))
+      .force('charge', forceManyBody().strength(-380))
       .force('center', forceCenter(GW / 2, GH / 2))
-      .force('collide', forceCollide(n => n.type === 'funder' ? (n.boxW / 2 + 12) : 48).iterations(4))
+      .force('collide', forceCollide(32))
       .stop()
       .tick(300)
 
     nodeArr.forEach(n => {
-      const pad = n.type === 'funder' ? (n.boxW / 2 + 14) : 52
-      n.x = Math.max(pad, Math.min(GW - pad, n.x ?? GW / 2))
-      n.y = Math.max(34, Math.min(GH - 34, n.y ?? GH / 2))
+      n.x = Math.max(55, Math.min(GW - 55, n.x ?? GW / 2))
+      n.y = Math.max(30, Math.min(GH - 30, n.y ?? GH / 2))
     })
 
     return { nodes: nodeArr, links: linkArr }
   }, [selectedFunders, coverage])
+
+  const LEGEND = [['#60a5fa','Funder'],['#34d399','Shared'],['#f59e0b','Single-source'],['#f87171','Weak']]
 
   return (
     <div style={{ border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, background: '#0b1829', overflow: 'hidden' }}>
@@ -298,7 +284,7 @@ function CoverageGraph({ coverage, selectedFunders, selectedCountry, highlighted
           <p style={{ ...S.subtle, marginTop: 2 }}>{selectedFunders.length} funder{selectedFunders.length !== 1 ? 's' : ''} · {coverage.countries.length} countries · force-directed layout</p>
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
-          {GRAPH_LEGEND.map(([color, label]) => (
+          {LEGEND.map(([color, label]) => (
             <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color }}>
               <svg width="8" height="8"><circle cx="4" cy="4" r="4" fill={color} /></svg>
               {label}
@@ -319,19 +305,20 @@ function CoverageGraph({ coverage, selectedFunders, selectedCountry, highlighted
           return (
             <line key={i}
               x1={src.x} y1={src.y} x2={tgt.x} y2={tgt.y}
-              stroke={color} strokeWidth={active ? 2.5 : 1}
+              stroke={color}
+              strokeWidth={active ? 2.5 : 1}
               strokeOpacity={active ? 0.75 : muted ? 0.05 : 0.2}
             />
           )
         })}
 
-        {/* Recipients first, funders on top */}
+        {/* Nodes — recipients first so funder labels render on top */}
         {[...nodes].sort(a => a.type === 'funder' ? 1 : -1).map(node => {
           const isFunder = node.type === 'funder'
           const isSelected = selectedCountry === node.id
           const isHighlighted = highlightedFunder === node.id
           const related = !isFunder && highlightedFunder ? node.funders?.includes(highlightedFunder) : false
-          const r = isFunder ? 0 : 6 + Math.min(10, ((node.totalWeight ?? 0) / Math.max(maxCountryWeight, 1)) * 10)
+          const r = isFunder ? 11 : 6 + Math.min(10, ((node.totalWeight ?? 0) / Math.max(maxCountryWeight, 1)) * 10)
           const fill = isFunder
             ? (isHighlighted ? 'rgba(35,102,201,0.45)' : '#0f1e31')
             : node.status === 'weak' ? '#321b24' : node.funders?.length > 1 ? '#143224' : '#352817'
@@ -340,37 +327,26 @@ function CoverageGraph({ coverage, selectedFunders, selectedCountry, highlighted
             : node.funders?.length > 1 ? '#34d399' : '#f59e0b'
           const emphStroke = (isSelected || isHighlighted || related) ? '#93c5fd' : stroke
 
-          // Recipient labels flip side based on which half of the canvas they're in
-          const labelRight = !isFunder && (node.x ?? GW / 2) <= GW / 2
-          const textX = isFunder ? 0 : labelRight ? (r + 6) : -(r + 6)
-          const textAnchor = isFunder ? 'middle' : labelRight ? 'start' : 'end'
-
-          // Funder: dynamic box, Recipient: circle
-          const boxW = node.boxW ?? 80
-          const displayLabel = isFunder
-            ? (node.label.length > MAX_BOX_CHARS ? node.label.slice(0, MAX_BOX_CHARS - 1) + '…' : node.label)
-            : truncate(node.label, 18)
-
           return (
             <g key={node.id}
-              transform={`translate(${(node.x ?? GW / 2).toFixed(1)},${(node.y ?? GH / 2).toFixed(1)})`}
+              transform={`translate(${node.x.toFixed(1)},${node.y.toFixed(1)})`}
               onClick={() => isFunder ? onSelectFunder(node.id) : onSelectCountry(node)}
               onMouseEnter={() => !isFunder && onHoverCountry(node)}
               onMouseLeave={() => !isFunder && onHoverCountry(null)}
               style={{ cursor: 'pointer' }}
             >
               {isFunder
-                ? <rect x={-boxW / 2} y={-11} width={boxW} height={22} rx={6}
+                ? <rect x={-(r + 4)} y={-10} width={(r + 4) * 2} height={20} rx={6}
                     fill={fill} stroke={emphStroke} strokeWidth={isHighlighted ? 2 : 1.2} />
                 : <circle r={r} fill={fill} stroke={emphStroke} strokeWidth={(isSelected || related) ? 2.3 : 1.4} />
               }
-              <text x={textX} y={4}
-                textAnchor={textAnchor}
+              <text x={isFunder ? 0 : r + 5} y={isFunder ? 4 : 4}
+                textAnchor={isFunder ? 'middle' : 'start'}
                 fill={isFunder ? '#c8dff2' : '#94a3b8'}
                 fontSize={isFunder ? 11 : 10}
                 fontWeight={isFunder ? 700 : 400}
                 style={{ pointerEvents: 'none', userSelect: 'none' }}>
-                {displayLabel}
+                {truncate(node.label, isFunder ? 16 : 14)}
               </text>
               <title>{node.label}{!isFunder ? ` · ${fmtAmount(node.totalWeight)}` : ''}</title>
             </g>
