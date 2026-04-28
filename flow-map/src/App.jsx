@@ -4,12 +4,14 @@ import MapPage from './pages/MapPage.jsx'
 import ProjectsPage from './pages/ProjectsPage.jsx'
 import HistoryPage from './pages/HistoryPage.jsx'
 import SimulatorPage from './pages/SimulatorPage.jsx'
+import FundingNetworkPage from './pages/FundingNetworkPage.jsx'
 
 const PAGE_TITLES = {
   map:       'Follow the Money',
   projects:  'Discover Projects',
   simulator: 'Funding Strategy Simulator',
   history:   'Foundation Funding History',
+  network:   'Funding Network',
 }
 
 export default function App() {
@@ -89,6 +91,7 @@ export default function App() {
           {page === 'projects'  && <ProjectsPage  data={data} projects={projects} projectsLoading={projectsLoading} />}
           {page === 'simulator' && <SimulatorPage data={data} projects={projects} projectsLoading={projectsLoading} />}
           {page === 'history'   && <HistoryPage   data={data} projects={projects} projectsLoading={projectsLoading} initialOrg={historyOrg} />}
+          {page === 'network'   && <FundingNetworkPage />}
         </main>
       </div>
     </div>

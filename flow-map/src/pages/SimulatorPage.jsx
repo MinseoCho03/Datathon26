@@ -142,7 +142,7 @@ export default function SimulatorPage({ data, projects, projectsLoading }) {
   [data])
 
 
-  const regions  = useMemo(() => ['All', ...new Set((data.recipients||[]).map(r=>r.regionMacro).filter(Boolean)).values()].sort((a,b) => a==='All'?-1:a.localeCompare(b)), [data])
+  const regions  = useMemo(() => ['All', ...[...new Set((data.recipients||[]).map(r=>r.regionMacro).filter(Boolean))].sort()], [data])
   const sectorOpts = useMemo(() => (data.sectors||['All']).filter(s => s!=='Unspecified'&&s!=='Other'), [data])
 
   // Portfolio — computed only from committed params
