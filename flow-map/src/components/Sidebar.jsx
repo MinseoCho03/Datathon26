@@ -105,10 +105,10 @@ export default function Sidebar({ page, onNavigate, collapsed, onToggle }) {
     <aside style={S.aside(collapsed)}>
       {/* Brand */}
       <div style={S.brand(collapsed)}>
-        <div style={S.brandMark}>FS</div>
+        <div style={S.brandMark}>OD</div>
         {!collapsed && (
           <div style={{ overflow: 'hidden' }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap' }}>First Spark</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap' }}>OECDash</div>
             <div style={{ fontSize: 11, color: '#475569', whiteSpace: 'nowrap' }}>Funder dashboard</div>
           </div>
         )}
