@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide } from 'd3-force'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ScatterChart, Scatter, ZAxis, PieChart, Pie, Cell, Legend, CartesianGrid } from 'recharts'
 
 const WEIGHT_LABEL = 'Funding amount'
@@ -66,15 +67,6 @@ function Badge({ children, tone = 'slate' }) {
   )
 }
 
-function KpiCard({ label, value, sub }) {
-  return (
-    <div style={{ ...S.panel, padding: '13px 15px', minHeight: 74 }}>
-      <p style={{ fontSize: 10, color: '#475569', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{label}</p>
-      <p style={{ fontSize: 22, fontWeight: 800, color: '#e2eaf4', marginTop: 5 }}>{value}</p>
-      {sub && <p style={{ ...S.subtle, marginTop: 2 }}>{sub}</p>}
-    </div>
-  )
-}
 
 function MiniBar({ value, max, color = '#60a5fa' }) {
   const pct = max > 0 ? Math.max(4, Math.min(100, (value / max) * 100)) : 0
@@ -246,98 +238,117 @@ function CoverageColumn({ title, subtitle, countries, empty, selectedCountry, hi
   )
 }
 
-function spreadPositions(count, top, bottom) {
-  if (count <= 1) return [(top + bottom) / 2]
-  const step = (bottom - top) / (count - 1)
-  return Array.from({ length: count }, (_, index) => top + index * step)
-}
+const GW = 780, GH = 520
 
 function CoverageGraph({ coverage, selectedFunders, selectedCountry, highlightedFunder, maxCountryWeight, onSelectCountry, onSelectFunder, onHoverCountry }) {
-  const visibleCountries = coverage.countries.slice(0, 14)
-  const countryNames = new Set(visibleCountries.map(country => country.country))
-  const funderY = spreadPositions(selectedFunders.length, 78, 462)
-  const countryY = spreadPositions(visibleCountries.length, 54, 486)
-  const funderPositions = Object.fromEntries(selectedFunders.map((name, index) => [name, { x: 118, y: funderY[index] }]))
-  const countryPositions = Object.fromEntries(visibleCountries.map((country, index) => [country.country, { x: 560, y: countryY[index] }]))
-  const maxEdgeWeight = Math.max(...coverage.relationships.map(edge => edge.weight), 1)
-  const edges = coverage.relationships.filter(edge => countryNames.has(edge.country))
+  const { nodes, links } = useMemo(() => {
+    const visible = coverage.countries.slice(0, 28)
+    const visibleSet = new Set(visible.map(c => c.country))
+
+    const nodeArr = [
+      ...selectedFunders.map(name => ({ id: name, type: 'funder', label: name })),
+      ...visible.map(c => ({
+        id: c.country, country: c.country, type: 'recipient', label: c.country,
+        status: c.status, funders: c.funders, totalWeight: c.totalWeight, mainSector: c.mainSector,
+      })),
+    ]
+    const linkArr = coverage.relationships
+      .filter(r => visibleSet.has(r.country))
+      .map(r => ({ source: r.funder, target: r.country, weight: r.weight }))
+
+    if (!nodeArr.length) return { nodes: [], links: [] }
+
+    forceSimulation(nodeArr)
+      .force('link', forceLink(linkArr).id(d => d.id).distance(120).strength(0.5))
+      .force('charge', forceManyBody().strength(-380))
+      .force('center', forceCenter(GW / 2, GH / 2))
+      .force('collide', forceCollide(32))
+      .stop()
+      .tick(300)
+
+    nodeArr.forEach(n => {
+      n.x = Math.max(55, Math.min(GW - 55, n.x ?? GW / 2))
+      n.y = Math.max(30, Math.min(GH - 30, n.y ?? GH / 2))
+    })
+
+    return { nodes: nodeArr, links: linkArr }
+  }, [selectedFunders, coverage])
+
+  const LEGEND = [['#60a5fa','Funder'],['#34d399','Shared'],['#f59e0b','Single-source'],['#f87171','Weak']]
 
   return (
-    <div style={{ minHeight: 520, border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, background: '#0b1829', overflow: 'hidden' }}>
-      <div style={{ padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+    <div style={{ border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, background: '#0b1829', overflow: 'hidden' }}>
+      <div style={{ padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <p style={{ color: '#e2eaf4', fontSize: 12, fontWeight: 800 }}>Funder to country graph</p>
-          <p style={{ ...S.subtle, marginTop: 2 }}>Showing the top {visibleCountries.length} countries by coverage weight.</p>
+          <p style={{ color: '#e2eaf4', fontSize: 12, fontWeight: 800 }}>Funding network</p>
+          <p style={{ ...S.subtle, marginTop: 2 }}>{selectedFunders.length} funder{selectedFunders.length !== 1 ? 's' : ''} · {coverage.countries.length} countries · force-directed layout</p>
         </div>
-        <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <Badge tone="blue">Funders</Badge>
-          <Badge tone="green">Shared</Badge>
-          <Badge tone="amber">Single-source</Badge>
-          <Badge tone="red">Weak</Badge>
+        <div style={{ display: 'flex', gap: 12 }}>
+          {LEGEND.map(([color, label]) => (
+            <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color }}>
+              <svg width="8" height="8"><circle cx="4" cy="4" r="4" fill={color} /></svg>
+              {label}
+            </span>
+          ))}
         </div>
       </div>
 
-      <svg viewBox="0 0 780 520" width="100%" height="520" role="img" aria-label="Funding coverage graph">
-        <text x="52" y="31" fill="#64748b" fontSize="11" fontWeight="700">SELECTED FUNDERS</text>
-        <text x="510" y="31" fill="#64748b" fontSize="11" fontWeight="700">RECIPIENT COUNTRIES</text>
-
-        {edges.map(edge => {
-          const start = funderPositions[edge.funder]
-          const end = countryPositions[edge.country]
-          if (!start || !end) return null
-          const country = coverage.countries.find(item => item.country === edge.country)
-          const active = selectedCountry === edge.country || highlightedFunder === edge.funder
-          const muted = (selectedCountry && selectedCountry !== edge.country) || (highlightedFunder && highlightedFunder !== edge.funder)
-          const width = 1.2 + Math.min(7, (edge.weight / maxEdgeWeight) * 7)
+      <svg viewBox={`0 0 ${GW} ${GH}`} width="100%" height={GH} style={{ display: 'block' }}>
+        {/* Edges */}
+        {links.map((link, i) => {
+          const src = typeof link.source === 'object' ? link.source : null
+          const tgt = typeof link.target === 'object' ? link.target : null
+          if (!src || !tgt) return null
+          const active = selectedCountry === tgt.id || highlightedFunder === src.id
+          const muted = (selectedCountry && selectedCountry !== tgt.id) || (highlightedFunder && highlightedFunder !== src.id)
+          const color = tgt.status === 'weak' ? '#f87171' : tgt.funders?.length > 1 ? '#34d399' : '#f59e0b'
           return (
-            <path
-              key={edge.id}
-              d={`M ${start.x + 64} ${start.y} C 300 ${start.y}, 465 ${end.y}, ${end.x - 78} ${end.y}`}
-              fill="none"
-              stroke={country?.weak ? '#f87171' : country?.funders.length > 1 ? '#34d399' : '#f59e0b'}
-              strokeWidth={active ? width + 1.2 : width}
-              strokeOpacity={active ? 0.72 : muted ? 0.08 : 0.24}
-              strokeLinecap="round"
+            <line key={i}
+              x1={src.x} y1={src.y} x2={tgt.x} y2={tgt.y}
+              stroke={color}
+              strokeWidth={active ? 2.5 : 1}
+              strokeOpacity={active ? 0.75 : muted ? 0.05 : 0.2}
             />
           )
         })}
 
-        {selectedFunders.map(name => {
-          const pos = funderPositions[name]
-          const active = highlightedFunder === name
-          return (
-            <g
-              key={name}
-              transform={`translate(${pos.x}, ${pos.y})`}
-              onClick={() => onSelectFunder(name)}
-              style={{ cursor: 'pointer' }}
-            >
-              <rect x="-68" y="-18" width="136" height="36" rx="9" fill={active ? 'rgba(35,102,201,0.28)' : '#0f1e31'} stroke={active ? 'rgba(96,165,250,0.65)' : 'rgba(255,255,255,0.11)'} />
-              <circle cx="-51" cy="0" r="5" fill="#60a5fa" />
-              <text x="-39" y="4" fill="#c8dff2" fontSize="11" fontWeight="700">{truncate(name, 18)}</text>
-            </g>
-          )
-        })}
+        {/* Nodes — recipients first so funder labels render on top */}
+        {[...nodes].sort(a => a.type === 'funder' ? 1 : -1).map(node => {
+          const isFunder = node.type === 'funder'
+          const isSelected = selectedCountry === node.id
+          const isHighlighted = highlightedFunder === node.id
+          const related = !isFunder && highlightedFunder ? node.funders?.includes(highlightedFunder) : false
+          const r = isFunder ? 11 : 6 + Math.min(10, ((node.totalWeight ?? 0) / Math.max(maxCountryWeight, 1)) * 10)
+          const fill = isFunder
+            ? (isHighlighted ? 'rgba(35,102,201,0.45)' : '#0f1e31')
+            : node.status === 'weak' ? '#321b24' : node.funders?.length > 1 ? '#143224' : '#352817'
+          const stroke = isFunder ? '#60a5fa'
+            : node.status === 'weak' ? '#f87171'
+            : node.funders?.length > 1 ? '#34d399' : '#f59e0b'
+          const emphStroke = (isSelected || isHighlighted || related) ? '#93c5fd' : stroke
 
-        {visibleCountries.map(country => {
-          const pos = countryPositions[country.country]
-          const selected = selectedCountry === country.country
-          const related = highlightedFunder ? country.funders.includes(highlightedFunder) : false
-          const radius = 15 + Math.min(17, (country.totalWeight / Math.max(maxCountryWeight, 1)) * 17)
-          const fill = country.weak ? '#321b24' : country.funders.length > 1 ? '#143224' : '#352817'
-          const stroke = country.weak ? '#f87171' : country.funders.length > 1 ? '#34d399' : '#f59e0b'
           return (
-            <g
-              key={country.country}
-              transform={`translate(${pos.x}, ${pos.y})`}
-              onClick={() => onSelectCountry(country)}
-              onMouseEnter={() => onHoverCountry(country)}
-              onMouseLeave={() => onHoverCountry(null)}
+            <g key={node.id}
+              transform={`translate(${node.x.toFixed(1)},${node.y.toFixed(1)})`}
+              onClick={() => isFunder ? onSelectFunder(node.id) : onSelectCountry(node)}
+              onMouseEnter={() => !isFunder && onHoverCountry(node)}
+              onMouseLeave={() => !isFunder && onHoverCountry(null)}
               style={{ cursor: 'pointer' }}
             >
-              <circle r={radius} fill={fill} stroke={selected || related ? '#60a5fa' : stroke} strokeWidth={selected || related ? 2.3 : 1.5} />
-              <text x={radius + 9} y="-3" fill="#e2eaf4" fontSize="12" fontWeight="800">{truncate(country.country, 18)}</text>
-              <text x={radius + 9} y="12" fill="#64748b" fontSize="10">{country.funders.length} funder{country.funders.length === 1 ? '' : 's'} · {fmtAmount(country.totalWeight)}</text>
+              {isFunder
+                ? <rect x={-(r + 4)} y={-10} width={(r + 4) * 2} height={20} rx={6}
+                    fill={fill} stroke={emphStroke} strokeWidth={isHighlighted ? 2 : 1.2} />
+                : <circle r={r} fill={fill} stroke={emphStroke} strokeWidth={(isSelected || related) ? 2.3 : 1.4} />
+              }
+              <text x={isFunder ? 0 : r + 5} y={isFunder ? 4 : 4}
+                textAnchor={isFunder ? 'middle' : 'start'}
+                fill={isFunder ? '#c8dff2' : '#94a3b8'}
+                fontSize={isFunder ? 11 : 10}
+                fontWeight={isFunder ? 700 : 400}
+                style={{ pointerEvents: 'none', userSelect: 'none' }}>
+                {truncate(node.label, isFunder ? 16 : 14)}
+              </text>
+              <title>{node.label}{!isFunder ? ` · ${fmtAmount(node.totalWeight)}` : ''}</title>
             </g>
           )
         })}
@@ -728,24 +739,13 @@ export default function FundingNetworkPage({ projects = [], projectsLoading = fa
     <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ color: '#e2eaf4', fontSize: 20, fontWeight: 800, letterSpacing: '-0.2px' }}>Funding Coverage Map</h1>
+          <h1 style={{ color: '#e2eaf4', fontSize: 20, fontWeight: 800, letterSpacing: '-0.2px' }}>Funding Explorer</h1>
           <p style={{ color: '#64748b', fontSize: 12, lineHeight: 1.6, marginTop: 5, maxWidth: 720 }}>
             Explore where selected funders have coverage, where their strategies overlap, and where recipient countries may be weakly connected.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Badge tone="green">Shared corridor</Badge>
-          <Badge tone="amber">Single-source</Badge>
-          <Badge tone="red">Weak coverage</Badge>
-        </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(140px, 1fr))', gap: 12 }}>
-        <KpiCard label="Selected funders" value={selectedFunders.length} />
-        <KpiCard label="Countries reached" value={coverage.countries.length} />
-        <KpiCard label="Shared countries" value={coverage.countries.filter(country => country.funders.length > 1).length} />
-        <KpiCard label="Single-source countries" value={coverage.countries.filter(country => country.funders.length === 1).length} />
-      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '280px minmax(620px, 1fr) 300px', gap: 16, alignItems: 'start' }}>
         <aside style={{ ...S.panel, padding: 16, display: 'flex', flexDirection: 'column', gap: 14, position: 'sticky', top: 16 }}>
@@ -762,7 +762,7 @@ export default function FundingNetworkPage({ projects = [], projectsLoading = fa
 
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <p style={S.label}>Selected funders</p>
+                  <p style={S.label}>Selected funders <span style={{ color: '#60a5fa', fontWeight: 800 }}>{selectedFunders.length > 0 ? `(${selectedFunders.length})` : ''}</span></p>
                   <button
                     onClick={() => { setSelectedFunders([]); setSelected(null); setHighlightedFunder(null) }}
                     style={{ ...S.quietButton, padding: '5px 8px' }}

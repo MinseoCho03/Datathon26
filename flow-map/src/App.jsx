@@ -11,7 +11,7 @@ const PAGE_TITLES = {
   projects:  'Discover Projects',
   simulator: 'Funding Strategy Simulator',
   history:   'Funding History',
-  network:   'Funding Coverage Map',
+  network:   'Funding Explorer',
 }
 
 export default function App() {
