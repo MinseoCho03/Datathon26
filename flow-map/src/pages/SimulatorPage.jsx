@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmt(v) {
@@ -36,20 +36,6 @@ const divLabel  = (nc, ns) => nc >= 4 && ns >= 2 ? 'Diversified' : nc >= 2 ? 'Mo
 const divColor  = l => l === 'Diversified' ? '#34d399' : l === 'Moderate' ? '#60a5fa' : '#f59e0b'
 const avgConcLabel = a => a > 0.55 ? 'High' : a > 0.35 ? 'Medium' : 'Low'
 
-// ── Rationale ─────────────────────────────────────────────────────────────────
-function rationale(a, risk) {
-  const p = []
-  if (a.wsScore > 60) p.push(`${a.country} is significantly underfunded in ${a.sector} relative to global sector activity`)
-  else if (a.wsScore > 35) p.push(`${a.country} shows a moderate funding gap in ${a.sector}`)
-  else p.push(`${a.country} has active ${a.sector} funding but strategic co-investment may still be additive`)
-  if (a.topDonorShare > 0.65) p.push(`donor concentration is high (${a.topDonors[0]} accounts for ${Math.round(a.topDonorShare*100)}%), leaving clear room for an independent funder`)
-  else if (a.topDonorShare < 0.30) p.push(`a diverse donor coalition already exists — partnership potential is strong`)
-  if (risk === 'exploratory' && a.actScore < 35) p.push(`sector activity is low globally, suggesting a first-mover opportunity`)
-  else if (risk === 'conservative' && a.actScore > 60) p.push(`${a.sector} has well-established funding infrastructure`)
-  if (a.momScore > 65) p.push(`sector funding is trending upward`)
-  else if (a.momScore < 40) p.push(`sector funding has been declining — contrarian entry may face headwinds`)
-  return p.join('. ') + '.'
-}
 
 // ── Budget input with custom +/- ──────────────────────────────────────────────
 function BudgetInput({ value, onChange }) {
@@ -73,9 +59,85 @@ function BudgetInput({ value, onChange }) {
   )
 }
 
-// ── AI placeholder accordion ───────────────────────────────────────────────────
-function AIExplanation() {
-  const [open, setOpen] = useState(false)
+// ── AI explanation (live streaming) ───────────────────────────────────────────
+function AIExplanation({ portfolio, params }) {
+  const { goal = '', risk, budget } = params
+  const [text, setText]       = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError]     = useState(null)
+  const [open, setOpen]       = useState(true)
+
+  async function generate() {
+    setText('')
+    setError(null)
+    setLoading(true)
+
+    const portfolioLines = portfolio.allocs.map((a, i) =>
+      `${i + 1}. ${a.country} — ${a.sector} (${fmt(a.allocation)}, ${a.sharePct}% of budget)\n` +
+      `   White Space: ${Math.round(a.wsScore)}/100 · Concentration: ${Math.round(a.concScore)}/100 · ` +
+      `Sector Activity: ${Math.round(a.actScore)}/100 · Momentum: ${Math.round(a.momScore)}/100\n` +
+      `   Top donors: ${a.topDonors.join(', ') || 'none recorded'}`
+    ).join('\n\n')
+
+    const content = [
+      `A foundation is deploying ${fmt(budget)} with a ${risk} risk strategy.`,
+      goal ? `Strategic goal: ${goal}` : null,
+      `\nRecommended portfolio (${portfolio.allocs.length} allocations):\n`,
+      portfolioLines,
+      `\nProvide a strategic narrative (3–4 paragraphs) covering: alignment with the ` +
+      `${goal ? 'stated goal' : risk + ' strategy'}, key trade-offs between the allocations, ` +
+      `co-funding opportunities with existing donors, and which allocation to prioritise first and why.`,
+    ].filter(Boolean).join('\n')
+
+    try {
+      const res = await fetch('/api/claude', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system: 'You are a philanthropic strategy advisor. Using OECD private philanthropy data (2020–2023), write a concise 2-paragraph strategic narrative. Be specific, reference countries and sectors by name. Stay under 150 words.',
+          messages: [{ role: 'user', content }],
+        }),
+      })
+
+      if (!res.ok) {
+        const msg = await res.text().catch(() => `HTTP ${res.status}`)
+        throw new Error(msg || `API error ${res.status}`)
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const data = line.slice(6).trim()
+          if (data === '[DONE]') break
+          try {
+            const parsed = JSON.parse(data)
+            if (parsed.type === 'text' && parsed.text) setText(t => t + parsed.text)
+            if (parsed.type === 'error') throw new Error(parsed.message)
+          } catch (e) {
+            if (!(e instanceof SyntaxError)) throw e
+          }
+        }
+      }
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Auto-trigger on mount. Component is re-keyed in parent when params change,
+  // so this fires once per Generate click.
+  useEffect(() => { generate() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div style={{ background: 'rgba(35,102,201,0.07)', border: '1px solid rgba(35,102,201,0.2)', borderRadius: 10, overflow: 'hidden' }}>
       <button onClick={() => setOpen(o => !o)}
@@ -83,25 +145,47 @@ function AIExplanation() {
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a10 10 0 1 1 0 20A10 10 0 0 1 12 2z"/><path d="M12 8v4m0 4h.01"/></svg>
           AI Strategy Explanation
-          <span style={{ fontSize: 10, color: '#334155', fontStyle: 'italic' }}>— coming soon</span>
+          {loading && <span style={{ fontSize: 11, color: '#475569' }}>generating…</span>}
         </span>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'none' }}>
           <polyline points="6 9 12 15 18 9"/>
         </svg>
       </button>
+
       {open && (
-        <div style={{ padding: '0 16px 16px', fontSize: 12, color: '#475569', lineHeight: 1.7, borderTop: '1px solid rgba(35,102,201,0.15)' }}>
-          <p style={{ marginTop: 12 }}>
-            <em>Once connected to Claude, this section will contain a strategic narrative explaining:</em>
-          </p>
-          <ul style={{ marginTop: 8, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <li>Why this portfolio composition aligns with the stated strategic goal</li>
-            <li>Key trade-offs between the selected allocations (e.g. concentration vs. diversification)</li>
-            <li>Potential co-funding opportunities with existing donors in each country-sector</li>
-            <li>Risk considerations specific to the chosen risk preference</li>
-            <li>Suggested sequencing — which allocations to prioritise first and why</li>
-          </ul>
-          <p style={{ marginTop: 10, color: '#334155' }}>Strategic goal input will be passed to the model as context alongside the OECD funding signals.</p>
+        <div style={{ padding: '0 16px 16px', borderTop: '1px solid rgba(35,102,201,0.15)' }}>
+          {loading && !text && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 0', color: '#475569', fontSize: 12 }}>
+              <div style={{ width: 12, height: 12, border: '2px solid #2366c9', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+              Analyzing portfolio signals…
+              <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+            </div>
+          )}
+
+          {text && (
+            <div style={{ paddingTop: 14, fontSize: 13, color: '#c8dff2', lineHeight: 1.75, whiteSpace: 'pre-wrap' }}>
+              {text}
+              {loading && <span style={{ opacity: 0.5, animation: 'blink 1s step-end infinite' }}>▋</span>}
+              <style>{`@keyframes blink { 0%,100%{opacity:0.5} 50%{opacity:0} }`}</style>
+            </div>
+          )}
+
+          {error && (
+            <div style={{ paddingTop: 14, fontSize: 12, color: '#f87171', display: 'flex', alignItems: 'center', gap: 10 }}>
+              {error}
+              <button onClick={generate}
+                style={{ fontSize: 11, color: '#7ab4d8', background: 'none', border: '1px solid rgba(35,102,201,0.3)', borderRadius: 5, padding: '3px 10px', cursor: 'pointer' }}>
+                Retry
+              </button>
+            </div>
+          )}
+
+          {!loading && text && (
+            <button onClick={generate}
+              style={{ marginTop: 12, fontSize: 11, color: '#475569', background: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 5, padding: '4px 12px', cursor: 'pointer' }}>
+              Regenerate
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -192,8 +276,8 @@ export default function SimulatorPage({ data, projects, projectsLoading }) {
   }, [params, csMeta, sectorMeta, countryMeta, maxCsTotal, maxSectorTotal, data])
 
   const handleGenerate = useCallback(() => {
-    setParams({ budget: Number(budget)||10, region, sector, risk })
-  }, [budget, region, sector, risk])
+    setParams({ budget: Number(budget)||10, region, sector, risk, goal })
+  }, [budget, region, sector, risk, goal])
 
   const inputStyle = { background: '#070f1c', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: '#c8dff2', padding: '8px 10px', fontSize: 13, outline: 'none', width: '100%' }
   const lbl = { fontSize: 11, color: '#475569', fontWeight: 500, marginBottom: 5, display: 'block' }
@@ -290,11 +374,15 @@ export default function SimulatorPage({ data, projects, projectsLoading }) {
                 </div>
               </div>
 
-              <AIExplanation />
+              <AIExplanation
+                key={`${params.risk}-${params.budget}-${params.region}-${params.sector}-${params.goal}`}
+                portfolio={portfolio}
+                params={params}
+              />
 
               <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:12}}>
-                {portfolio.allocs.map((alloc, i) => (
-                  <AllocationCard key={`${alloc.country}-${alloc.sector}`} alloc={alloc} rank={i+1} risk={params.risk} projects={projects} projectsLoading={projectsLoading} />
+                {portfolio.allocs.map((alloc) => (
+                  <AllocationCard key={`${alloc.country}-${alloc.sector}`} alloc={alloc} projects={projects} projectsLoading={projectsLoading} />
                 ))}
               </div>
 
@@ -315,7 +403,7 @@ export default function SimulatorPage({ data, projects, projectsLoading }) {
 // ── Allocation card (flip) ────────────────────────────────────────────────────
 const CARD_H = 270
 
-function AllocationCard({ alloc, rank, risk, projects, projectsLoading }) {
+function AllocationCard({ alloc, projects, projectsLoading }) {
   const [flipped, setFlipped] = useState(false)
   const wsCl   = wsColor(alloc.wsScore)
   const concCl = concColor(alloc.topDonorShare)
@@ -436,7 +524,7 @@ function SignalBar({ label, value, color, tag }) {
 }
 
 function PortfolioSummary({ portfolio }) {
-  const { allocs, uniqueCountries, uniqueSectors, avgConc, divLbl, budgetM } = portfolio
+  const { uniqueCountries, uniqueSectors, avgConc, divLbl, budgetM } = portfolio
   const divCl  = divColor(divLbl)
   const concLbl = avgConcLabel(avgConc)
   const concCl  = concColor(avgConc)

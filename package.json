@@ -1,0 +1,7 @@
+{
+  "name": "datathon26",
+  "version": "1.0.0",
+  "dependencies": {
+    "@anthropic-ai/sdk": "latest"
+  }
+}

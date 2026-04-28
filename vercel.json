@@ -1,0 +1,11 @@
+{
+  "buildCommand": "cd flow-map && npm install && npm run build",
+  "outputDirectory": "flow-map/dist",
+  "installCommand": "npm install",
+  "functions": {
+    "api/claude.js": {
+      "memory": 512,
+      "maxDuration": 30
+    }
+  }
+}
