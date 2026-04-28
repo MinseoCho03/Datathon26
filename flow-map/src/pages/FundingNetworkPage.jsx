@@ -498,7 +498,7 @@ function DesignChartArea({ config, projects }) {
   if (!data.length) return <div style={{...S.subtle, padding: 20}}>No data available.</div>
 
   const dataKeys = useMemo(() => {
-    if (!config.colorBy || config.colorBy === 'none' || config.type === 'pie') return ['Total']
+    if (!config.colorBy || config.colorBy === 'none' || config.type === 'pie') return ['total']
     const keys = new Set()
     data.forEach(d => Object.keys(d).forEach(k => {
       if (k !== 'name' && k !== '_original' && k !== 'total' && k !== 'totalSize' && !k.endsWith('_size')) keys.add(k)
@@ -569,11 +569,9 @@ function DesignChartArea({ config, projects }) {
 
 function ChartDesignerConfig({ config, setConfig }) {
   const dimensions = [
-    { value: 'org', label: 'Funder (Org)' },
-    { value: 'country', label: 'Recipient Country' },
     { value: 'regionMacro', label: 'Region' },
     { value: 'sector', label: 'Sector' },
-    { value: 'year', label: 'Year' }
+    { value: 'year', label: 'Year' },
   ];
   
   const measures = [
@@ -686,7 +684,7 @@ export default function FundingNetworkPage({ projects = [], projectsLoading = fa
   const [selected, setSelected] = useState(null)
   const [hoveredCountry, setHoveredCountry] = useState(null)
   const [highlightedFunder, setHighlightedFunder] = useState(null)
-  const [viewMode, setViewMode] = useState('dashboard')
+  const [viewMode, setViewMode] = useState('design')
   const [chartConfig, setChartConfig] = useState({
     type: 'bar',
     xAxis: 'sector',
@@ -749,7 +747,7 @@ export default function FundingNetworkPage({ projects = [], projectsLoading = fa
         <KpiCard label="Single-source countries" value={coverage.countries.filter(country => country.funders.length === 1).length} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: viewMode === 'design' ? '280px minmax(620px, 1fr)' : '280px minmax(620px, 1fr) 300px', gap: 16, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '280px minmax(620px, 1fr) 300px', gap: 16, alignItems: 'start' }}>
         <aside style={{ ...S.panel, padding: 16, display: 'flex', flexDirection: 'column', gap: 14, position: 'sticky', top: 16 }}>
           {viewMode === 'design' ? (
             <ChartDesignerConfig config={chartConfig} setConfig={setChartConfig} />
@@ -861,7 +859,6 @@ export default function FundingNetworkPage({ projects = [], projectsLoading = fa
                     </button>
                   ))}
                 </div>
-                <Badge tone="slate">Coverage weight = {WEIGHT_LABEL}</Badge>
               </div>
             </div>
 
@@ -914,7 +911,9 @@ export default function FundingNetworkPage({ projects = [], projectsLoading = fa
           </div>
         </section>
 
-        {viewMode !== 'design' && <StrategicReading selected={selected} coverage={coverage} dataByFunder={dataByFunder} />}
+        <div style={{ display: viewMode === 'design' ? 'none' : undefined }}>
+          <StrategicReading selected={selected} coverage={coverage} dataByFunder={dataByFunder} />
+        </div>
       </div>
     </div>
   )

@@ -1,61 +1,9 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
-import path from 'path'
-import fs from 'fs'
 import Anthropic from '@anthropic-ai/sdk'
 
-// Serve the parent Datathon26 directory as static files so that
-// /funder/index.html, /styles.css, /app.js, /data/... all resolve correctly
-// from within the dev server — enabling seamless navigation between the
-// React map page and the vanilla-JS funder portal.
-function serveParentStatic() {
-  const projectRoot = path.resolve(__dirname, '..')
-  const MIME = {
-    '.html': 'text/html; charset=utf-8',
-    '.css':  'text/css',
-    '.js':   'application/javascript',
-    '.json': 'application/json',
-    '.png':  'image/png',
-    '.svg':  'image/svg+xml',
-    '.ico':  'image/x-icon',
-  }
-  return {
-    name: 'serve-parent-static',
-    configureServer(server) {
-      server.middlewares.use((req, res, next) => {
-        const url = decodeURIComponent(req.url.split('?')[0])
-        // Never intercept Vite-internal routes or the React entry
-        if (
-          url === '/' ||
-          url === '/index.html' ||
-          url.startsWith('/@') ||
-          url.startsWith('/src') ||
-          url.startsWith('/node_modules') ||
-          url.startsWith('/flow-data.json') ||
-          url.startsWith('/api/')
-        ) return next()
-
-        const filePath = path.join(projectRoot, url)
-        // Security: stay inside projectRoot
-        if (!filePath.startsWith(projectRoot)) return next()
-
-        try {
-          const stat = fs.statSync(filePath)
-          if (stat.isFile()) {
-            const ext = path.extname(filePath)
-            res.setHeader('Content-Type', MIME[ext] || 'text/plain')
-            res.end(fs.readFileSync(filePath))
-            return
-          }
-        } catch (_) { /* file not found → fall through */ }
-        next()
-      })
-    },
-  }
-}
-
-// Proxy /api/claude to Anthropic in dev — same shape as the Vercel function
-// so the frontend code is identical in dev and production.
+// Dev-only: forwards /api/claude to Anthropic.
+// On Vercel, /api/claude is handled by api/claude.js serverless function.
 function claudeApiPlugin() {
   return {
     name: 'claude-api',
@@ -110,7 +58,6 @@ function claudeApiPlugin() {
               res.write(`data: ${JSON.stringify({ type: 'text', text })}\n\n`)
             })
 
-            // Forward tool-call events for the future Network tab
             stream.on('inputJson', (delta) => {
               res.write(`data: ${JSON.stringify({ type: 'tool_delta', delta })}\n\n`)
             })
@@ -130,21 +77,12 @@ function claudeApiPlugin() {
   }
 }
 
-// export default defineConfig({
-//   plugins: [react(), serveParentStatic(), claudeApiPlugin()],
-//   base: './',
-// })
-
 export default defineConfig(({ mode }) => {
-  // 2. Load env file based on the current working directory
-  // The third argument '' loads all variables regardless of VITE_ prefix
-  const env = loadEnv(mode, process.cwd(), '');
-  
-  // 3. Manually inject it into process.env so your plugin can see it
-  process.env.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY;
+  const env = loadEnv(mode, process.cwd(), '')
+  process.env.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY
 
   return {
-    plugins: [react(), serveParentStatic(), claudeApiPlugin()],
-    base: './',
+    plugins: [react(), claudeApiPlugin()],
+    base: '/',
   }
 })
