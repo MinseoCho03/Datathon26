@@ -244,6 +244,9 @@ const CHAR_W = 6.8
 const BOX_PAD = 18
 const MAX_BOX_W = 160
 const MAX_BOX_CHARS = Math.floor((MAX_BOX_W - BOX_PAD) / CHAR_W) // ~21 chars before ellipsis
+// Recipient label estimation (10px regular sans-serif)
+const LCHAR_W = 5.5
+const LABEL_H = 13
 
 function funderBoxWidth(label) {
   const capped = label.length > MAX_BOX_CHARS ? label.slice(0, MAX_BOX_CHARS - 1) + '…' : label
@@ -286,6 +289,57 @@ function CoverageGraph({ coverage, selectedFunders, selectedCountry, highlighted
       n.x = Math.max(pad, Math.min(GW - pad, n.x ?? GW / 2))
       n.y = Math.max(34, Math.min(GH - 34, n.y ?? GH / 2))
     })
+
+    // ── Label deconfliction ──────────────────────────────────────────────────
+    // Compute each node's label bounding box, then iteratively push
+    // overlapping labels apart in Y. Funder boxes are fixed anchors;
+    // only recipient text labels move.
+    const maxTW = Math.max(...visible.map(c => c.totalWeight), 1)
+
+    const meta = nodeArr.map(n => {
+      if (n.type === 'funder') {
+        const bw = n.boxW ?? 80
+        return { n, isFunder: true, bw }
+      }
+      const r = 6 + Math.min(10, ((n.totalWeight ?? 0) / maxTW) * 10)
+      const lw = truncate(n.label, 18).length * LCHAR_W
+      const right = n.x <= GW / 2
+      return { n, isFunder: false, r, lw, right }
+    })
+
+    nodeArr.forEach(n => { n._adjY = 0 })
+
+    for (let iter = 0; iter < 80; iter++) {
+      let moved = false
+      for (let i = 0; i < meta.length; i++) {
+        for (let j = i + 1; j < meta.length; j++) {
+          const a = meta[i], b = meta[j]
+
+          // X bounds of each label
+          const ax1 = a.isFunder ? a.n.x - a.bw / 2 : a.right ? a.n.x + a.r + 5 : a.n.x - a.r - 5 - a.lw
+          const ax2 = a.isFunder ? a.n.x + a.bw / 2 : a.right ? a.n.x + a.r + 5 + a.lw : a.n.x - a.r - 5
+          const bx1 = b.isFunder ? b.n.x - b.bw / 2 : b.right ? b.n.x + b.r + 5 : b.n.x - b.r - 5 - b.lw
+          const bx2 = b.isFunder ? b.n.x + b.bw / 2 : b.right ? b.n.x + b.r + 5 + b.lw : b.n.x - b.r - 5
+
+          if (ax2 <= bx1 || bx2 <= ax1) continue   // no X overlap → skip
+
+          // Y bounds (funder box fixed; recipient floats by _adjY)
+          const aH = a.isFunder ? 22 : LABEL_H
+          const bH = b.isFunder ? 22 : LABEL_H
+          const ay = a.n.y + (a.isFunder ? 0 : a.n._adjY)
+          const by = b.n.y + (b.isFunder ? 0 : b.n._adjY)
+          const oy = Math.min(ay + aH / 2, by + bH / 2) - Math.max(ay - aH / 2, by - bH / 2)
+          if (oy <= 0) continue
+
+          const push = oy / 2 + 1
+          if (!a.isFunder) a.n._adjY += ay <= by ? -push : push
+          if (!b.isFunder) b.n._adjY += by <= ay ? -push : push
+          moved = true
+        }
+      }
+      if (!moved) break
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     return { nodes: nodeArr, links: linkArr }
   }, [selectedFunders, coverage])
@@ -364,7 +418,7 @@ function CoverageGraph({ coverage, selectedFunders, selectedCountry, highlighted
                     fill={fill} stroke={emphStroke} strokeWidth={isHighlighted ? 2 : 1.2} />
                 : <circle r={r} fill={fill} stroke={emphStroke} strokeWidth={(isSelected || related) ? 2.3 : 1.4} />
               }
-              <text x={textX} y={4}
+              <text x={textX} y={isFunder ? 4 : 4 + (node._adjY ?? 0)}
                 textAnchor={textAnchor}
                 fill={isFunder ? '#c8dff2' : '#94a3b8'}
                 fontSize={isFunder ? 11 : 10}
