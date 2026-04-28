@@ -49,6 +49,36 @@ function ChartCard({ title, sub, children }) {
   )
 }
 
+function ProjectList({ projects }) {
+  return (
+    <div style={{ maxHeight: 420, overflowY: 'auto', paddingRight: 4, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {projects.map(p => (
+        <div key={p.id} style={{ background: '#0b1829', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, padding: '12px 14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: '#e2eaf4', lineHeight: 1.35, marginBottom: 5 }}>
+                {p.title || 'Untitled funded project'}
+              </p>
+              <p style={{ fontSize: 11, color: '#64748b', lineHeight: 1.5 }}>
+                {p.country || 'Unknown country'} · {p.sector || 'Unspecified'} · {p.year || '—'}
+              </p>
+            </div>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#34d399', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmt(p.amount)}</span>
+          </div>
+          {p.description && (
+            <p style={{ fontSize: 12, color: '#475569', lineHeight: 1.5, marginTop: 8, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+              {p.description}
+            </p>
+          )}
+          {p.subsector && (
+            <p style={{ fontSize: 10, color: '#334155', marginTop: 7 }}>{p.subsector}</p>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function Kpi({ label, value, sub }) {
   return (
     <div style={{ background: '#0f1e31', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '14px 18px' }}>
@@ -112,28 +142,22 @@ function OrgSearch({ orgList, value, onChange }) {
 
 export default function HistoryPage({ data, projects, projectsLoading, initialOrg }) {
   const [selectedOrg, setSelectedOrg] = useState(initialOrg || 'BBVAMF')
+  const [projectYear, setProjectYear] = useState('All')
+  const [projectSearch, setProjectSearch] = useState('')
+
+  useEffect(() => {
+    setProjectYear('All')
+    setProjectSearch('')
+  }, [selectedOrg])
 
   const orgList = useMemo(() => {
-    if (!projects) return [{ org: 'Gates Foundation', amount: data.gatesFunding?.total || 0 }]
+    if (!projects) return []
     const m = {}
     projects.forEach(p => { if (p.org) m[p.org] = (m[p.org] || 0) + p.amount })
     return Object.entries(m).map(([org, amount]) => ({ org, amount })).sort((a, b) => b.amount - a.amount)
-  }, [projects, data])
+  }, [projects])
 
   const orgStats = useMemo(() => {
-    // Use precomputed Gates data while projects are still loading
-    if ((!projects || projects.length === 0) && selectedOrg === 'Gates Foundation') {
-      const gf = data.gatesFunding || {}
-      return {
-        total: gf.total || 0,
-        yearTrend: gf.yearTrend || [],
-        bySector: (gf.bySector || []).slice(0, 8).map(s => ({ sector: s.sector, amount: s.amount })),
-        byCountry: (gf.byCountry || []).slice(0, 12),
-        byRegion:  gf.byRegion || [],
-        projectCount: (gf.projects || []).length,
-        donorCountry: 'United States',
-      }
-    }
     if (!projects) return null
     const orgProjects = projects.filter(p => p.org === selectedOrg)
     if (!orgProjects.length) return null
@@ -146,24 +170,38 @@ export default function HistoryPage({ data, projects, projectsLoading, initialOr
       if (p.regionMacro) regionM[p.regionMacro]  = (regionM[p.regionMacro]  || 0) + p.amount
       if (p.donorCountry) donorM[p.donorCountry] = (donorM[p.donorCountry]  || 0) + p.amount
     })
-    const years = data.years || [2020, 2021, 2022, 2023]
+    const years = Object.keys(yearM).map(Number).sort((a, b) => a - b)
     const total = orgProjects.reduce((s, p) => s + p.amount, 0)
     const topDonorCountry = Object.entries(donorM).sort((a, b) => b[1] - a[1])[0]?.[0] || ''
+    const availableYearLabel = years.length > 1 ? `${years[0]}–${years[years.length - 1]}` : String(years[0] || '—')
     return {
       total,
       yearTrend:  years.map(yr => ({ year: yr, amount: yearM[yr] || 0 })),
       bySector:   Object.entries(sectorM).map(([sector, amount]) => ({ sector, amount })).sort((a,b) => b.amount-a.amount).slice(0, 8),
       byCountry:  Object.entries(countryM).map(([country, amount]) => ({ country, amount })).sort((a,b) => b.amount-a.amount).slice(0, 12),
       byRegion:   Object.entries(regionM).map(([region, amount]) => ({ region, amount })).sort((a,b) => b.amount-a.amount),
+      projects:    [...orgProjects].sort((a, b) => (b.year || 0) - (a.year || 0) || (b.amount || 0) - (a.amount || 0)),
       projectCount: orgProjects.length,
       donorCountry: topDonorCountry,
+      availableYearLabel,
     }
-  }, [projects, selectedOrg, data])
+  }, [projects, selectedOrg])
 
   const yearTrend = orgStats?.yearTrend || []
   const bySector  = (orgStats?.bySector  || []).map(s => ({ name: s.sector,  amount: s.amount }))
   const byCountry = (orgStats?.byCountry || []).map(c => ({ name: c.country, amount: c.amount }))
   const byRegion  = (orgStats?.byRegion  || []).map(r => ({ name: r.region,  amount: r.amount }))
+  const projectYears = useMemo(() =>
+    ['All', ...[...new Set((orgStats?.projects || []).map(p => p.year).filter(Boolean))].sort((a, b) => b - a)],
+  [orgStats])
+  const filteredProjects = useMemo(() => {
+    const q = projectSearch.trim().toLowerCase()
+    return (orgStats?.projects || []).filter(p => {
+      if (projectYear !== 'All' && String(p.year) !== String(projectYear)) return false
+      if (!q) return true
+      return `${p.title || ''} ${p.description || ''} ${p.country || ''} ${p.sector || ''} ${p.subsector || ''}`.toLowerCase().includes(q)
+    })
+  }, [orgStats, projectYear, projectSearch])
 
   const delta = useMemo(() => {
     if (yearTrend.length < 2) return null
@@ -209,14 +247,14 @@ export default function HistoryPage({ data, projects, projectsLoading, initialOr
         <>
           {/* KPIs */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
-            <Kpi label="Total Disbursed"     value={fmt(orgStats.total)}       sub="2020–2023" />
-            <Kpi label="Annual Average"      value={fmt(orgStats.total / 4)}   sub="Across 4 years" />
+            <Kpi label="Total Disbursed"     value={fmt(orgStats.total)}       sub={orgStats.availableYearLabel || 'Reported years'} />
+            <Kpi label="Annual Average"      value={fmt(orgStats.total / Math.max(yearTrend.length, 1))}   sub={`Across ${yearTrend.length || 0} reported year${yearTrend.length === 1 ? '' : 's'}`} />
             <Kpi label="Recipient Countries" value={orgStats.byCountry.length} sub="Mapped countries" />
-            <Kpi label="Trend"               value={delta ? `${delta.dir}${delta.pct}%` : '—'} sub={`2020 → ${yearTrend[yearTrend.length-1]?.year || 2023}`} />
+            <Kpi label="Trend"               value={delta ? `${delta.dir}${delta.pct}%` : '—'} sub={`${yearTrend[0]?.year || '—'} → ${yearTrend[yearTrend.length-1]?.year || '—'}`} />
           </div>
 
           {/* Year trend */}
-          <ChartCard title="Annual Disbursements" sub="Total per year, USD millions">
+          <ChartCard title="Annual Disbursements" sub={`Total per reported year, USD millions${orgStats.availableYearLabel ? ` · ${orgStats.availableYearLabel}` : ''}`}>
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={yearTrend.map(y => ({ year: String(y.year), amount: y.amount }))} margin={{ left: 16, right: 24, top: 8, bottom: 0 }}>
                 <XAxis dataKey="year" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
@@ -242,6 +280,45 @@ export default function HistoryPage({ data, projects, projectsLoading, initialOr
           {/* Top recipient countries */}
           <ChartCard title="Top Recipient Countries">
             <BarList data={byCountry} colorFn={i => COLORS[i % COLORS.length]} />
+          </ChartCard>
+
+          <ChartCard title="Funded Projects" sub={`${filteredProjects.length.toLocaleString()} of ${orgStats.projectCount.toLocaleString()} project records · scroll to browse`}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
+              <label style={{ flex: '1 1 260px' }}>
+                <span style={{ display: 'block', fontSize: 11, color: '#475569', marginBottom: 4 }}>Search projects</span>
+                <input
+                  value={projectSearch}
+                  onChange={e => setProjectSearch(e.target.value)}
+                  placeholder="Project title, country, sector..."
+                  style={{ width: '100%', background: '#070f1c', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: '#c8dff2', padding: '8px 10px', fontSize: 12, outline: 'none' }}
+                />
+              </label>
+              <label style={{ flex: '0 0 150px' }}>
+                <span style={{ display: 'block', fontSize: 11, color: '#475569', marginBottom: 4 }}>Year</span>
+                <select
+                  value={projectYear}
+                  onChange={e => setProjectYear(e.target.value)}
+                  style={{ width: '100%', background: '#070f1c', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: '#c8dff2', padding: '8px 10px', fontSize: 12, outline: 'none' }}
+                >
+                  {projectYears.map(y => <option key={y} value={y} style={{ background: '#070f1c' }}>{y === 'All' ? 'All years' : y}</option>)}
+                </select>
+              </label>
+              {(projectSearch || projectYear !== 'All') && (
+                <button
+                  onClick={() => { setProjectSearch(''); setProjectYear('All') }}
+                  style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: '#94a3b8', fontSize: 12, cursor: 'pointer' }}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            {filteredProjects.length ? (
+              <ProjectList projects={filteredProjects} />
+            ) : (
+              <div style={{ textAlign: 'center', padding: 36, color: '#334155', fontSize: 13, border: '1px dashed rgba(255,255,255,0.1)', borderRadius: 8 }}>
+                No projects match these filters.
+              </div>
+            )}
           </ChartCard>
         </>
       )}

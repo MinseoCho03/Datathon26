@@ -161,6 +161,13 @@ export default function MapPage({ data, projects, onNavigate }) {
     return { total, countries: countries.size, donors: donors.size, records: filteredRecords.length }
   }, [filteredRecords])
 
+  const sourceKpis = useMemo(() => ({
+    total: data.metrics?.totalFunding ?? kpis.total,
+    countries: data.metrics?.recipientCount ?? kpis.countries,
+    donors: data.metrics?.donorCount ?? kpis.donors,
+    records: data.metrics?.recordCount ?? kpis.records,
+  }), [data, kpis])
+
   // 4 charts
   const charts = useMemo(() => {
     const donor = {}, country = {}, region = {}
@@ -303,10 +310,10 @@ export default function MapPage({ data, projects, onNavigate }) {
           <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }} />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
-          <Kpi label="Total Funding" value={fmt(kpis.total)} sub="Current filters" />
-          <Kpi label="Recipient Countries" value={kpis.countries} sub="In filtered records" />
-          <Kpi label="Donor Countries" value={kpis.donors} sub="In filtered records" />
-          <Kpi label="Flow Records" value={kpis.records.toLocaleString()} sub="Aggregated grant records" />
+          <Kpi label="Total Funding" value={fmt(sourceKpis.total)} sub="Full OECD source data" />
+          <Kpi label="Recipient Countries" value={sourceKpis.countries} sub="Original recipient fields" />
+          <Kpi label="Donor Countries" value={sourceKpis.donors} sub="Original donor fields" />
+          <Kpi label="Flow Records" value={sourceKpis.records.toLocaleString()} sub="Original positive-disbursement rows" />
         </div>
       </div>
 

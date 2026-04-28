@@ -11,7 +11,7 @@ const PAGE_TITLES = {
   projects:  'Discover Projects',
   simulator: 'Funding Strategy Simulator',
   history:   'Foundation Funding History',
-  network:   'Funding Network',
+  network:   'Funding Coverage Map',
 }
 
 export default function App() {
@@ -91,7 +91,7 @@ export default function App() {
           {page === 'projects'  && <ProjectsPage  data={data} projects={projects} projectsLoading={projectsLoading} />}
           {page === 'simulator' && <SimulatorPage data={data} projects={projects} projectsLoading={projectsLoading} />}
           {page === 'history'   && <HistoryPage   data={data} projects={projects} projectsLoading={projectsLoading} initialOrg={historyOrg} />}
-          {page === 'network'   && <FundingNetworkPage />}
+          {page === 'network'   && <FundingNetworkPage projects={projects} projectsLoading={projectsLoading} />}
         </main>
       </div>
     </div>
