@@ -10,7 +10,7 @@ const PAGE_TITLES = {
   map:       'Follow the Money',
   projects:  'Discover Projects',
   simulator: 'Funding Strategy Simulator',
-  history:   'Foundation Funding History',
+  history:   'Funding History',
   network:   'Funding Coverage Map',
 }
 

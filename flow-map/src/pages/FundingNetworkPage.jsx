@@ -170,8 +170,8 @@ function deriveCoverage(selectedFunders, dataByFunder) {
   return {
     relationships,
     countries: withStatus,
-    shared: withStatus.filter(country => country.funders.length > 1 && !country.weak),
-    single: withStatus.filter(country => country.funders.length === 1 && !country.weak),
+    shared: withStatus.filter(country => country.funders.length > 1),
+    single: withStatus.filter(country => country.funders.length === 1),
     weak: withStatus.filter(country => country.weak),
     crowded: withStatus.filter(country => country.funders.length > 1).sort((a, b) => b.funders.length - a.funders.length || b.totalWeight - a.totalWeight),
     maxCountryWeight: Math.max(...withStatus.map(country => country.totalWeight), 0),
@@ -245,6 +245,106 @@ function CoverageColumn({ title, subtitle, countries, empty, selectedCountry, hi
   )
 }
 
+function spreadPositions(count, top, bottom) {
+  if (count <= 1) return [(top + bottom) / 2]
+  const step = (bottom - top) / (count - 1)
+  return Array.from({ length: count }, (_, index) => top + index * step)
+}
+
+function CoverageGraph({ coverage, selectedFunders, selectedCountry, highlightedFunder, maxCountryWeight, onSelectCountry, onSelectFunder, onHoverCountry }) {
+  const visibleCountries = coverage.countries.slice(0, 14)
+  const countryNames = new Set(visibleCountries.map(country => country.country))
+  const funderY = spreadPositions(selectedFunders.length, 78, 462)
+  const countryY = spreadPositions(visibleCountries.length, 54, 486)
+  const funderPositions = Object.fromEntries(selectedFunders.map((name, index) => [name, { x: 118, y: funderY[index] }]))
+  const countryPositions = Object.fromEntries(visibleCountries.map((country, index) => [country.country, { x: 560, y: countryY[index] }]))
+  const maxEdgeWeight = Math.max(...coverage.relationships.map(edge => edge.weight), 1)
+  const edges = coverage.relationships.filter(edge => countryNames.has(edge.country))
+
+  return (
+    <div style={{ minHeight: 520, border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, background: '#0b1829', overflow: 'hidden' }}>
+      <div style={{ padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+        <div>
+          <p style={{ color: '#e2eaf4', fontSize: 12, fontWeight: 800 }}>Funder to country graph</p>
+          <p style={{ ...S.subtle, marginTop: 2 }}>Showing the top {visibleCountries.length} countries by coverage weight.</p>
+        </div>
+        <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <Badge tone="blue">Funders</Badge>
+          <Badge tone="green">Shared</Badge>
+          <Badge tone="amber">Single-source</Badge>
+          <Badge tone="red">Weak</Badge>
+        </div>
+      </div>
+
+      <svg viewBox="0 0 780 520" width="100%" height="520" role="img" aria-label="Funding coverage graph">
+        <text x="52" y="31" fill="#64748b" fontSize="11" fontWeight="700">SELECTED FUNDERS</text>
+        <text x="510" y="31" fill="#64748b" fontSize="11" fontWeight="700">RECIPIENT COUNTRIES</text>
+
+        {edges.map(edge => {
+          const start = funderPositions[edge.funder]
+          const end = countryPositions[edge.country]
+          if (!start || !end) return null
+          const country = coverage.countries.find(item => item.country === edge.country)
+          const active = selectedCountry === edge.country || highlightedFunder === edge.funder
+          const muted = (selectedCountry && selectedCountry !== edge.country) || (highlightedFunder && highlightedFunder !== edge.funder)
+          const width = 1.2 + Math.min(7, (edge.weight / maxEdgeWeight) * 7)
+          return (
+            <path
+              key={edge.id}
+              d={`M ${start.x + 64} ${start.y} C 300 ${start.y}, 465 ${end.y}, ${end.x - 78} ${end.y}`}
+              fill="none"
+              stroke={country?.weak ? '#f87171' : country?.funders.length > 1 ? '#34d399' : '#f59e0b'}
+              strokeWidth={active ? width + 1.2 : width}
+              strokeOpacity={active ? 0.72 : muted ? 0.08 : 0.24}
+              strokeLinecap="round"
+            />
+          )
+        })}
+
+        {selectedFunders.map(name => {
+          const pos = funderPositions[name]
+          const active = highlightedFunder === name
+          return (
+            <g
+              key={name}
+              transform={`translate(${pos.x}, ${pos.y})`}
+              onClick={() => onSelectFunder(name)}
+              style={{ cursor: 'pointer' }}
+            >
+              <rect x="-68" y="-18" width="136" height="36" rx="9" fill={active ? 'rgba(35,102,201,0.28)' : '#0f1e31'} stroke={active ? 'rgba(96,165,250,0.65)' : 'rgba(255,255,255,0.11)'} />
+              <circle cx="-51" cy="0" r="5" fill="#60a5fa" />
+              <text x="-39" y="4" fill="#c8dff2" fontSize="11" fontWeight="700">{truncate(name, 18)}</text>
+            </g>
+          )
+        })}
+
+        {visibleCountries.map(country => {
+          const pos = countryPositions[country.country]
+          const selected = selectedCountry === country.country
+          const related = highlightedFunder ? country.funders.includes(highlightedFunder) : false
+          const radius = 15 + Math.min(17, (country.totalWeight / Math.max(maxCountryWeight, 1)) * 17)
+          const fill = country.weak ? '#321b24' : country.funders.length > 1 ? '#143224' : '#352817'
+          const stroke = country.weak ? '#f87171' : country.funders.length > 1 ? '#34d399' : '#f59e0b'
+          return (
+            <g
+              key={country.country}
+              transform={`translate(${pos.x}, ${pos.y})`}
+              onClick={() => onSelectCountry(country)}
+              onMouseEnter={() => onHoverCountry(country)}
+              onMouseLeave={() => onHoverCountry(null)}
+              style={{ cursor: 'pointer' }}
+            >
+              <circle r={radius} fill={fill} stroke={selected || related ? '#60a5fa' : stroke} strokeWidth={selected || related ? 2.3 : 1.5} />
+              <text x={radius + 9} y="-3" fill="#e2eaf4" fontSize="12" fontWeight="800">{truncate(country.country, 18)}</text>
+              <text x={radius + 9} y="12" fill="#64748b" fontSize="10">{country.funders.length} funder{country.funders.length === 1 ? '' : 's'} · {fmtAmount(country.totalWeight)}</text>
+            </g>
+          )
+        })}
+      </svg>
+    </div>
+  )
+}
+
 function StrategicReading({ selected, coverage, dataByFunder }) {
   const selectedCountry = selected?.type === 'country'
     ? coverage.countries.find(country => country.country === selected.name)
@@ -304,8 +404,9 @@ function StrategicReading({ selected, coverage, dataByFunder }) {
   }
 
   const concentrated = coverage.countries.slice(0, 3).map(country => country.country).join(', ') || '—'
+  const narrowCoverageCount = coverage.countries.filter(country => country.funders.length === 1 || country.weak).length
   const interpretation = coverage.countries.length
-    ? `This selected funder set is concentrated around ${concentrated}, while ${coverage.single.length + coverage.weak.length} countries appear through one funder relationship or low coverage weight.`
+    ? `This selected funder set is concentrated around ${concentrated}, while ${narrowCoverageCount} countries appear through one funder relationship or low coverage weight.`
     : 'Select funders to build a coverage map.'
 
   return (
@@ -337,6 +438,7 @@ export default function FundingNetworkPage({ projects = [], projectsLoading = fa
   const [selected, setSelected] = useState(null)
   const [hoveredCountry, setHoveredCountry] = useState(null)
   const [highlightedFunder, setHighlightedFunder] = useState(null)
+  const [viewMode, setViewMode] = useState('dashboard')
 
   const funders = useMemo(() => buildFunderData(projects), [projects])
   const dataByFunder = useMemo(() => Object.fromEntries(funders.map(funder => [funder.name, funder])), [funders])
@@ -473,7 +575,32 @@ export default function FundingNetworkPage({ projects = [], projectsLoading = fa
                 <p style={{ color: '#e2eaf4', fontSize: 13, fontWeight: 800 }}>Country coverage</p>
                 <p style={{ ...S.subtle, marginTop: 3 }}>{WEIGHT_LABEL} is summed from real project amounts. Bottom quartile countries are marked as weak coverage.</p>
               </div>
-              <Badge tone="slate">Coverage weight = {WEIGHT_LABEL}</Badge>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+                <div style={{ display: 'inline-flex', padding: 3, borderRadius: 8, background: '#070f1c', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  {[
+                    ['dashboard', 'Dashboard'],
+                    ['graph', 'Graph'],
+                  ].map(([mode, label]) => (
+                    <button
+                      key={mode}
+                      onClick={() => setViewMode(mode)}
+                      style={{
+                        padding: '6px 10px',
+                        border: 'none',
+                        borderRadius: 6,
+                        background: viewMode === mode ? 'rgba(35,102,201,0.28)' : 'transparent',
+                        color: viewMode === mode ? '#e2eaf4' : '#64748b',
+                        fontSize: 11,
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <Badge tone="slate">Coverage weight = {WEIGHT_LABEL}</Badge>
+              </div>
             </div>
 
             {!selectedFunders.length ? (
@@ -483,8 +610,19 @@ export default function FundingNetworkPage({ projects = [], projectsLoading = fa
                   <p style={{ ...S.subtle, marginTop: 6 }}>Choose funders from the left panel to compare recipient country coverage.</p>
                 </div>
               </div>
+            ) : viewMode === 'graph' ? (
+              <CoverageGraph
+                coverage={coverage}
+                selectedFunders={selectedFunders}
+                selectedCountry={selectedCountryName}
+                highlightedFunder={highlightedFunder}
+                maxCountryWeight={coverage.maxCountryWeight}
+                onSelectCountry={country => setSelected({ type: 'country', name: country.country })}
+                onSelectFunder={name => { setSelected({ type: 'funder', name }); setHighlightedFunder(prev => prev === name ? null : name) }}
+                onHoverCountry={setHoveredCountry}
+              />
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
                 <CoverageColumn
                   title="Shared Corridors"
                   subtitle="Countries connected to 2+ selected funders"
@@ -501,17 +639,6 @@ export default function FundingNetworkPage({ projects = [], projectsLoading = fa
                   subtitle="Countries connected to exactly one selected funder"
                   countries={coverage.single}
                   empty="No single-source countries in this selection."
-                  selectedCountry={selectedCountryName}
-                  highlightedFunder={highlightedFunder}
-                  maxCountryWeight={coverage.maxCountryWeight}
-                  onSelectCountry={country => setSelected({ type: 'country', name: country.country })}
-                  onHoverCountry={setHoveredCountry}
-                />
-                <CoverageColumn
-                  title="Possible White Space"
-                  subtitle="Lower-weight countries among this selected set"
-                  countries={coverage.weak}
-                  empty="No weak coverage countries in this selection."
                   selectedCountry={selectedCountryName}
                   highlightedFunder={highlightedFunder}
                   maxCountryWeight={coverage.maxCountryWeight}

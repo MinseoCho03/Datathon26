@@ -273,7 +273,9 @@ export default function HistoryPage({ data, projects, projectsLoading, initialOr
 
             {/* Region breakdown */}
             <ChartCard title="Disbursements by Region">
-              <BarList data={byRegion} single="#0d846a" />
+              <div style={{ minHeight: 170, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <BarList data={byRegion} single="#0d846a" />
+              </div>
             </ChartCard>
           </div>
 
@@ -284,7 +286,7 @@ export default function HistoryPage({ data, projects, projectsLoading, initialOr
 
           <ChartCard title="Funded Projects" sub={`${filteredProjects.length.toLocaleString()} of ${orgStats.projectCount.toLocaleString()} project records · scroll to browse`}>
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
-              <label style={{ flex: '1 1 260px' }}>
+              <label style={{ flex: '0 1 360px', maxWidth: 360 }}>
                 <span style={{ display: 'block', fontSize: 11, color: '#475569', marginBottom: 4 }}>Search projects</span>
                 <input
                   value={projectSearch}
