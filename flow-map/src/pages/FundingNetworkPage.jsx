@@ -256,9 +256,13 @@ function funderBoxWidth(label) {
 const GRAPH_LEGEND = [['#60a5fa', 'Funder'], ['#34d399', 'Shared'], ['#f59e0b', 'Single-source']]
 
 function CoverageGraph({ coverage, selectedFunders, selectedCountry, highlightedFunder, maxCountryWeight, onSelectCountry, onSelectFunder, onHoverCountry }) {
-  const { nodes, links } = useMemo(() => {
-    const visible = coverage.countries.slice(0, 28)
+  const { nodes, links, graphH } = useMemo(() => {
+    const visible = coverage.countries          // show ALL countries, no slice
     const visibleSet = new Set(visible.map(c => c.country))
+
+    // Canvas height scales with node count so every node has room
+    const totalNodes = visible.length + selectedFunders.length
+    const dynH = Math.max(520, Math.min(1200, totalNodes * 14))
 
     const nodeArr = [
       ...selectedFunders.map(name => ({
@@ -274,12 +278,12 @@ function CoverageGraph({ coverage, selectedFunders, selectedCountry, highlighted
       .filter(r => visibleSet.has(r.country))
       .map(r => ({ source: r.funder, target: r.country, weight: r.weight }))
 
-    if (!nodeArr.length) return { nodes: [], links: [] }
+    if (!nodeArr.length) return { nodes: [], links: [], graphH: dynH }
 
     forceSimulation(nodeArr)
       .force('link', forceLink(linkArr).id(d => d.id).distance(160).strength(0.4))
       .force('charge', forceManyBody().strength(-520))
-      .force('center', forceCenter(GW / 2, GH / 2))
+      .force('center', forceCenter(GW / 2, dynH / 2))
       .force('collide', forceCollide(n => n.type === 'funder' ? (n.boxW / 2 + 12) : 48).iterations(4))
       .stop()
       .tick(300)
@@ -287,7 +291,7 @@ function CoverageGraph({ coverage, selectedFunders, selectedCountry, highlighted
     nodeArr.forEach(n => {
       const pad = n.type === 'funder' ? (n.boxW / 2 + 14) : 52
       n.x = Math.max(pad, Math.min(GW - pad, n.x ?? GW / 2))
-      n.y = Math.max(34, Math.min(GH - 34, n.y ?? GH / 2))
+      n.y = Math.max(34, Math.min(dynH - 34, n.y ?? dynH / 2))
     })
 
     // ── Label deconfliction ──────────────────────────────────────────────────
