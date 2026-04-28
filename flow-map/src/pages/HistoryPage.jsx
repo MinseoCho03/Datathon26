@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
 function fmt(v) {
   v = Number(v || 0)
@@ -16,6 +16,25 @@ const TT = ({ active, payload, label }) => {
     <div style={{ background: '#0b1829', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#c8dff2' }}>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>{label || payload[0]?.name}</div>
       {payload.map(p => <div key={p.name} style={{ color: p.color || '#c8dff2' }}>{p.name ? `${p.name}: ` : ''}{fmt(p.value)}</div>)}
+    </div>
+  )
+}
+
+function BarList({ data, colorFn, single }) {
+  const max = Math.max(...data.map(d => d.amount), 1)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '2px 0' }}>
+      {data.map((d, i) => (
+        <div key={d.name} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 130, fontSize: 11, color: '#64748b', textAlign: 'right', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.name}>
+            {d.name}
+          </span>
+          <div style={{ flex: 1, height: 10, background: 'rgba(255,255,255,0.06)', borderRadius: 3 }}>
+            <div style={{ width: `${(d.amount / max) * 100}%`, height: '100%', background: colorFn ? colorFn(i) : single, borderRadius: '0 3px 3px 0', minWidth: 2 }} />
+          </div>
+          <span style={{ fontSize: 10, color: '#475569', width: 46, flexShrink: 0 }}>{fmt(d.amount)}</span>
+        </div>
+      ))}
     </div>
   )
 }
@@ -92,7 +111,7 @@ function OrgSearch({ orgList, value, onChange }) {
 }
 
 export default function HistoryPage({ data, projects, projectsLoading, initialOrg }) {
-  const [selectedOrg, setSelectedOrg] = useState(initialOrg || 'Gates Foundation')
+  const [selectedOrg, setSelectedOrg] = useState(initialOrg || 'BBVAMF')
 
   const orgList = useMemo(() => {
     if (!projects) return [{ org: 'Gates Foundation', amount: data.gatesFunding?.total || 0 }]
@@ -211,43 +230,18 @@ export default function HistoryPage({ data, projects, projectsLoading, initialOr
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             {/* Sector breakdown */}
             <ChartCard title="Disbursements by Sector">
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={bySector} layout="vertical" margin={{ left: 110, right: 16, top: 0, bottom: 0 }}>
-                  <XAxis type="number" hide />
-                  <YAxis type="category" dataKey="name" width={8} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} interval={0} />
-                  <Tooltip content={<TT />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
-                  <Bar dataKey="amount" radius={[0,4,4,0]} maxBarSize={16}>
-                    {bySector.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <BarList data={bySector} colorFn={i => COLORS[i % COLORS.length]} />
             </ChartCard>
 
             {/* Region breakdown */}
             <ChartCard title="Disbursements by Region">
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={byRegion} layout="vertical" margin={{ left: 90, right: 16, top: 0, bottom: 0 }}>
-                  <XAxis type="number" hide />
-                  <YAxis type="category" dataKey="name" width={8} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} interval={0} />
-                  <Tooltip content={<TT />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
-                  <Bar dataKey="amount" radius={[0,4,4,0]} maxBarSize={18} fill="#0d846a" />
-                </BarChart>
-              </ResponsiveContainer>
+              <BarList data={byRegion} single="#0d846a" />
             </ChartCard>
           </div>
 
           {/* Top recipient countries */}
           <ChartCard title="Top Recipient Countries">
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={byCountry} layout="vertical" margin={{ left: 110, right: 16, top: 0, bottom: 0 }}>
-                <XAxis type="number" hide />
-                <YAxis type="category" dataKey="name" width={8} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} interval={0} />
-                <Tooltip content={<TT />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
-                <Bar dataKey="amount" radius={[0,4,4,0]} maxBarSize={16}>
-                  {byCountry.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <BarList data={byCountry} colorFn={i => COLORS[i % COLORS.length]} />
           </ChartCard>
         </>
       )}

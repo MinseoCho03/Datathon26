@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
+  LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts'
 
@@ -126,16 +126,22 @@ export default function CountryProfile({ recipient, onClose, sectorDnaData, coun
           </div>
 
           {donorView === 'countries' ? (
-            <ResponsiveContainer width="100%" height={110}>
-              <BarChart data={topDonors} layout="vertical" margin={{ left: 8, right: 8, top: 0, bottom: 0 }}>
-                <XAxis type="number" hide />
-                <YAxis type="category" dataKey="name" width={30} tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} interval={0} />
-                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
-                <Bar dataKey="amount" radius={[0,3,3,0]} maxBarSize={12}>
-                  {topDonors.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '2px 0' }}>
+              {topDonors.map((d, i) => {
+                const max = topDonors[0]?.amount || 1
+                return (
+                  <div key={d.name} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 80, fontSize: 10, color: '#64748b', textAlign: 'right', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.name}>
+                      {d.name}
+                    </span>
+                    <div style={{ flex: 1, height: 8, background: 'rgba(255,255,255,0.06)', borderRadius: 2 }}>
+                      <div style={{ width: `${(d.amount / max) * 100}%`, height: '100%', background: COLORS[i % COLORS.length], borderRadius: '0 2px 2px 0', minWidth: 2 }} />
+                    </div>
+                    <span style={{ fontSize: 10, color: '#475569', width: 40, flexShrink: 0, textAlign: 'right' }}>{fmt(d.amount)}</span>
+                  </div>
+                )
+              })}
+            </div>
           ) : countryOrgs.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               {countryOrgs.map((o, i) => (
@@ -164,7 +170,7 @@ export default function CountryProfile({ recipient, onClose, sectorDnaData, coun
       {/* Sector DNA pie chart */}
       {pieSectors.length > 0 && (
         <div>
-          <p style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Sector DNA</p>
+          <p style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Funding by Sector</p>
           <ResponsiveContainer width="100%" height={190}>
             <PieChart>
               <Pie

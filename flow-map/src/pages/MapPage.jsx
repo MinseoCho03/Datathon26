@@ -56,6 +56,26 @@ function ChartCard({ title, children }) {
   )
 }
 
+// Div-based horizontal bar list — immune to SVG clipping, labels always fully visible
+function BarList({ data, colorFn, single }) {
+  const max = Math.max(...data.map(d => d.amount), 1)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '2px 0' }}>
+      {data.map((d, i) => (
+        <div key={d.name} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 130, fontSize: 11, color: '#64748b', textAlign: 'right', flexShrink: 0, lineHeight: 1.2 }}>
+            {d.name}
+          </span>
+          <div style={{ flex: 1, height: 10, background: 'rgba(255,255,255,0.06)', borderRadius: 3 }}>
+            <div style={{ width: `${(d.amount / max) * 100}%`, height: '100%', background: colorFn ? colorFn(i) : single, borderRadius: '0 3px 3px 0', minWidth: 2 }} />
+          </div>
+          <span style={{ fontSize: 10, color: '#475569', width: 46, flexShrink: 0 }}>{fmt(d.amount)}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Country search bar ─────────────────────────────────────────────────────────
 function CountrySearch({ countries, onSelect }) {
   const [query, setQuery]   = useState('')
@@ -279,8 +299,8 @@ export default function MapPage({ data, projects, onNavigate }) {
       {/* KPI cards */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Worldwide OECD Data</span>
-          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.06)' }} />
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#7ab4d8', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Worldwide OECD Data</span>
+          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }} />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
           <Kpi label="Total Funding" value={fmt(kpis.total)} sub="Current filters" />
@@ -318,38 +338,14 @@ export default function MapPage({ data, projects, onNavigate }) {
           </ResponsiveContainer>
         </ChartCard>
 
-        {/* Top Donor Countries — full names, no skipping */}
+        {/* Top Donor Countries */}
         <ChartCard title="Top Donor Countries">
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={charts.donor} layout="vertical" margin={{ left: 110, right: 12, top: 0, bottom: 0 }}>
-              <XAxis type="number" hide />
-              <YAxis
-                type="category"
-                dataKey="name"
-                width={8}
-                tick={{ fill: '#64748b', fontSize: 11 }}
-                axisLine={false}
-                tickLine={false}
-                interval={0}
-              />
-              <Tooltip content={<TT />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
-              <Bar dataKey="amount" radius={[0,4,4,0]} maxBarSize={16}>
-                {charts.donor.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <BarList data={charts.donor} colorFn={i => COLORS[i % COLORS.length]} />
         </ChartCard>
 
         {/* Top Recipient Countries */}
         <ChartCard title="Top Recipient Countries">
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={charts.country} layout="vertical" margin={{ left: 110, right: 12, top: 0, bottom: 0 }}>
-              <XAxis type="number" hide />
-              <YAxis type="category" dataKey="name" width={8} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} interval={0} />
-              <Tooltip content={<TT />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
-              <Bar dataKey="amount" radius={[0,4,4,0]} maxBarSize={16} fill="#0d846a" />
-            </BarChart>
-          </ResponsiveContainer>
+          <BarList data={charts.country} single="#0d846a" />
         </ChartCard>
       </div>
 

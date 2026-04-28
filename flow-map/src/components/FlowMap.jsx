@@ -10,7 +10,6 @@ import { scaleSequentialLog } from 'd3-scale'
 const GEO_URL =
   'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json'
 
-// ISO numeric → OECD country name mapping (world-atlas uses numeric codes)
 const ISO_TO_NAME = {
   4:'Afghanistan',8:'Albania',12:'Algeria',24:'Angola',32:'Argentina',
   51:'Armenia',36:'Australia',40:'Austria',50:'Bangladesh',56:'Belgium',
@@ -25,12 +24,12 @@ const ISO_TO_NAME = {
   276:'Germany',288:'Ghana',320:'Guatemala',324:'Guinea',624:'Guinea-Bissau',
   328:'Guyana',332:'Haiti',340:'Honduras',356:'India',360:'Indonesia',
   368:'Iraq',372:'Ireland',376:'Israel',380:'Italy',388:'Jamaica',
-  392:'Japan',400:'Jordan',398:'Kazakhstan',404:'Kenya',384:'Kosovo',
+  392:'Japan',400:'Jordan',398:'Kazakhstan',404:'Kenya',
   418:"Lao People's Democratic Republic",422:'Lebanon',426:'Lesotho',
   430:'Liberia',434:'Libya',450:'Madagascar',454:'Malawi',458:'Malaysia',
   462:'Maldives',466:'Mali',484:'Mexico',498:'Moldova',496:'Mongolia',
   504:'Morocco',508:'Mozambique',104:'Myanmar',516:'Namibia',524:'Nepal',
-  528:'Netherlands',540:'New Caledonia',558:'Nicaragua',562:'Niger',
+  528:'Netherlands',558:'Nicaragua',562:'Niger',
   566:'Nigeria',578:'Norway',586:'Pakistan',591:'Panama',598:'Papua New Guinea',
   600:'Paraguay',604:'Peru',608:'Philippines',620:'Portugal',634:'Qatar',
   646:'Rwanda',686:'Senegal',694:'Sierra Leone',706:'Somalia',
@@ -48,6 +47,10 @@ const ARC_COLORS = [
   '#60a5fa','#34d399','#f59e0b','#f472b6','#a78bfa','#fb923c','#22d3ee',
 ]
 
+const DONOR_TOP_RED = '#c0392b'  // top-N donors: muted red
+const DONOR_DIM_RED = '#4a1515'  // non-top-N donors: very faint red tint
+const DONOR_DOT     = '#f87171'  // dot color on map
+
 function fmt(millions) {
   const v = Number(millions || 0)
   if (v >= 1000) return `$${(v / 1000).toFixed(1)}B`
@@ -55,12 +58,9 @@ function fmt(millions) {
   return `$${Math.round(v * 1000)}K`
 }
 
-// ── Arc layer rendered inside the SVG ────────────────────────────────────────
 function ArcLayer({ selectedRecipient, topDonors, donorMap, topN }) {
   const { projection } = useMapContext()
-
   if (!selectedRecipient || !projection) return null
-
   const target = projection([selectedRecipient.lon, selectedRecipient.lat])
   if (!target) return null
   const [tx, ty] = target
@@ -73,16 +73,12 @@ function ArcLayer({ selectedRecipient, topDonors, donorMap, topN }) {
         const src = projection([dc.lon, dc.lat])
         if (!src) return null
         const [sx, sy] = src
-
         const mx = (sx + tx) / 2
-        // Lift control point perpendicular to chord for a nice arc
         const dist = Math.hypot(tx - sx, ty - sy)
         const lift = Math.min(130, Math.max(40, dist * 0.35))
         const my = (sy + ty) / 2 - lift
-
         const strokeW = Math.max(1.2, Math.min(5, Math.sqrt(donor.amount) * 0.04))
         const color = ARC_COLORS[i % ARC_COLORS.length]
-
         return (
           <path
             key={donor.donorCountry}
@@ -99,24 +95,20 @@ function ArcLayer({ selectedRecipient, topDonors, donorMap, topN }) {
   )
 }
 
-// ── Donor dots ────────────────────────────────────────────────────────────────
 function DonorDots({ topDonors, donorMap, topN }) {
   const { projection } = useMapContext()
   if (!projection) return null
-
   return (
     <g>
-      {topDonors.slice(0, topN).map((donor, i) => {
+      {topDonors.slice(0, topN).map((donor) => {
         const dc = donorMap[donor.donorCountry]
         if (!dc) return null
         const pt = projection([dc.lon, dc.lat])
         if (!pt) return null
         const [x, y] = pt
-        const color = ARC_COLORS[i % ARC_COLORS.length]
-
         return (
           <g key={donor.donorCountry} transform={`translate(${x.toFixed(1)},${y.toFixed(1)})`}>
-            <circle r={7} fill={color} stroke="#fff" strokeWidth={1.5} opacity={0.9} />
+            <circle r={7} fill={DONOR_DOT} stroke="#fff" strokeWidth={1.5} opacity={0.95} />
           </g>
         )
       })}
@@ -124,11 +116,9 @@ function DonorDots({ topDonors, donorMap, topN }) {
   )
 }
 
-// ── Recipient dots (all countries) ───────────────────────────────────────────
-function RecipientDots({ recipients, selectedCountry, onSelect, colorScale, maxTotal }) {
+function RecipientDots({ recipients, selectedCountry, onSelect, maxTotal }) {
   const { projection } = useMapContext()
   if (!projection) return null
-
   return (
     <g>
       {recipients.map((rec) => {
@@ -137,7 +127,6 @@ function RecipientDots({ recipients, selectedCountry, onSelect, colorScale, maxT
         const [x, y] = pt
         const isSelected = rec.country === selectedCountry
         const r = isSelected ? 10 : Math.max(3.5, Math.sqrt(rec.total / maxTotal) * 18)
-
         return (
           <circle
             key={rec.country}
@@ -159,13 +148,9 @@ function RecipientDots({ recipients, selectedCountry, onSelect, colorScale, maxT
   )
 }
 
-// ── Main map component ────────────────────────────────────────────────────────
-export default function FlowMap({
-  data, selectedCountry, onSelect, filters,
-}) {
+export default function FlowMap({ data, selectedCountry, onSelect, filters }) {
   const { sector, year, topN } = filters
 
-  // Build lookup maps
   const recipientMap = useMemo(
     () => Object.fromEntries((data.recipients || []).map((r) => [r.country, r])),
     [data]
@@ -175,7 +160,6 @@ export default function FlowMap({
     [data]
   )
 
-  // Filter recipients by sector+year
   const filteredRecipients = useMemo(() => {
     if (sector === 'All' && year === 'All') return data.recipients || []
     const byCountry = {}
@@ -195,29 +179,22 @@ export default function FlowMap({
     [filteredRecipients]
   )
 
-  const colorScale = useMemo(() => {
-    const scale = scaleSequentialLog()
-      .domain([0.1, maxTotal])
-      .range(['#1e3a5f', '#0d846a'])
-    return scale
-  }, [maxTotal])
+  const colorScale = useMemo(() => (
+    scaleSequentialLog().domain([0.1, maxTotal]).range(['#1e3a5f', '#0d846a'])
+  ), [maxTotal])
 
-  // Name → total for choropleth
   const countryTotals = useMemo(() => {
     const m = {}
     filteredRecipients.forEach((r) => { m[r.country] = r.total })
     return m
   }, [filteredRecipients])
 
-  // Selected recipient profile (filtered)
   const selectedRecipient = useMemo(() => {
     if (!selectedCountry) return null
     if (sector === 'All' && year === 'All') return recipientMap[selectedCountry] || null
     const rec = filteredRecipients.find((r) => r.country === selectedCountry)
     if (!rec) return null
-    // Compute top donors filtered
-    const donorTotals = {}
-    const sectorTotals = {}
+    const donorTotals = {}, sectorTotals = {}
     ;(data.records || []).forEach((r) => {
       if (r.country !== selectedCountry) return
       if (sector !== 'All' && r.sector !== sector) return
@@ -238,85 +215,95 @@ export default function FlowMap({
 
   const topDonors = selectedRecipient?.topDonors || []
 
+  // Top-N donor names (shown with arcs) → brighter red
+  const topNDonorNames = useMemo(() => {
+    if (!selectedRecipient) return new Set()
+    return new Set(topDonors.slice(0, topN).map(d => d.donorCountry))
+  }, [selectedRecipient, topDonors, topN])
+
+  // All donor names for selected country → dim red for the rest
+  const allDonorNames = useMemo(() => {
+    if (!selectedRecipient) return new Set()
+    return new Set((selectedRecipient.topDonors || []).map(d => d.donorCountry))
+  }, [selectedRecipient])
+
   return (
-    <div className="relative w-full" style={{ background: '#0a1628', borderRadius: 12, overflow: 'hidden' }}>
-      <ComposableMap
-        projectionConfig={{ scale: 155, center: [15, 5] }}
-        style={{ width: '100%', height: '100%' }}
-        height={480}
-      >
-        {/* Base map */}
-        <Geographies geography={GEO_URL}>
-          {({ geographies }) =>
-            geographies.map((geo) => {
-              const name = ISO_TO_NAME[Number(geo.id)]
-              const total = name ? countryTotals[name] : 0
-              const isSelected = name && name === selectedCountry
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {/* Map */}
+      <div style={{ background: '#0a1628', borderRadius: 12, overflow: 'hidden' }}>
+        <ComposableMap
+          projectionConfig={{ scale: 155, center: [15, 5] }}
+          style={{ width: '100%', height: '100%' }}
+          height={480}
+        >
+          <Geographies geography={GEO_URL}>
+            {({ geographies }) =>
+              geographies.map((geo) => {
+                const name  = ISO_TO_NAME[Number(geo.id)]
+                const total = name ? countryTotals[name] : 0
+                const isSelected  = name && name === selectedCountry
+                const isTopDonor  = name && topNDonorNames.has(name)
+                const isDimDonor  = name && !isTopDonor && allDonorNames.has(name)
 
-              let fill = '#1a2d44'
-              if (isSelected) fill = '#0d846a'
-              else if (total) fill = colorScale(total)
+                let fill = '#1a2d44'
+                if (isSelected)       fill = '#0d846a'
+                else if (isTopDonor)  fill = DONOR_TOP_RED
+                else if (isDimDonor)  fill = DONOR_DIM_RED
+                else if (total)       fill = colorScale(total)
 
-              return (
-                <Geography
-                  key={geo.rsmKey}
-                  geography={geo}
-                  fill={fill}
-                  stroke="#0e1f34"
-                  strokeWidth={0.5}
-                  style={{
-                    default: { outline: 'none' },
-                    hover: { outline: 'none', fill: isSelected ? '#0d846a' : '#2a4a6e', cursor: name ? 'pointer' : 'default' },
-                    pressed: { outline: 'none' },
-                  }}
-                  onClick={() => name && onSelect(name)}
-                >
-                  {name && <title>{name}{total ? ` · ${fmt(total)}` : ''}</title>}
-                </Geography>
-              )
-            })
-          }
-        </Geographies>
+                return (
+                  <Geography
+                    key={geo.rsmKey}
+                    geography={geo}
+                    fill={fill}
+                    stroke="#0e1f34"
+                    strokeWidth={0.5}
+                    style={{
+                      default: { outline: 'none' },
+                      hover:   { outline: 'none', fill: isSelected ? '#0d846a' : isTopDonor ? '#dc2626' : isDimDonor ? '#6b2020' : '#2a4a6e', cursor: name ? 'pointer' : 'default' },
+                      pressed: { outline: 'none' },
+                    }}
+                    onClick={() => name && onSelect(name)}
+                  >
+                    {name && <title>{name}{total ? ` · ${fmt(total)}` : ''}</title>}
+                  </Geography>
+                )
+              })
+            }
+          </Geographies>
 
-        {/* Arcs from donors to selected country */}
-        <ArcLayer
-          key={selectedCountry + sector + year}
-          selectedRecipient={selectedRecipient}
-          topDonors={topDonors}
-          donorMap={donorMap}
-          topN={topN}
-        />
-
-        {/* Recipient dots */}
-        <RecipientDots
-          recipients={filteredRecipients}
-          selectedCountry={selectedCountry}
-          onSelect={onSelect}
-          colorScale={colorScale}
-          maxTotal={maxTotal}
-        />
-
-        {/* Donor dots (shown when country selected) */}
-        {selectedRecipient && (
-          <DonorDots
+          <ArcLayer
+            key={selectedCountry + sector + year}
+            selectedRecipient={selectedRecipient}
             topDonors={topDonors}
             donorMap={donorMap}
             topN={topN}
           />
-        )}
-      </ComposableMap>
 
-      {/* Legend */}
-      <div className="absolute bottom-3 left-3 flex items-center gap-3 text-xs text-slate-400">
-        <span className="flex items-center gap-1.5">
+          <RecipientDots
+            recipients={filteredRecipients}
+            selectedCountry={selectedCountry}
+            onSelect={onSelect}
+            maxTotal={maxTotal}
+          />
+
+          {selectedRecipient && (
+            <DonorDots topDonors={topDonors} donorMap={donorMap} topN={topN} />
+          )}
+        </ComposableMap>
+      </div>
+
+      {/* Legend — below the map so it never overlaps */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 18, paddingLeft: 6, flexWrap: 'wrap' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#64748b' }}>
           <svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#2366c9" fillOpacity={0.8} /></svg>
           Recipient country
         </span>
-        <span className="flex items-center gap-1.5">
-          <svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#0d846a" /></svg>
-          Selected / Donor
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#64748b' }}>
+          <svg width="12" height="12"><circle cx="6" cy="6" r="5" fill={DONOR_DOT} /></svg>
+          Donor
         </span>
-        <span className="text-slate-500">Click a dot or country to explore</span>
+        <span style={{ fontSize: 11, color: '#475569' }}>Click a dot or country to explore</span>
       </div>
     </div>
   )

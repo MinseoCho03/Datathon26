@@ -9,7 +9,7 @@ const PAGE_TITLES = {
   map:       'Follow the Money',
   projects:  'Discover Projects',
   simulator: 'Funding Strategy Simulator',
-  history:   'Funding History',
+  history:   'Foundation Funding History',
 }
 
 export default function App() {
@@ -17,7 +17,7 @@ export default function App() {
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState(null)
   const [page, setPage]               = useState('map')
-  const [collapsed, setCollapsed]     = useState(false)
+  const [collapsed, setCollapsed]     = useState(true)
   const [projects, setProjects]       = useState(null)
   const [projectsLoading, setProjectsLoading] = useState(false)
   const [historyOrg, setHistoryOrg]   = useState('Gates Foundation')
