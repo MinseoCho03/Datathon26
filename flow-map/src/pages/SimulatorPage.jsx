@@ -1025,7 +1025,7 @@ export default function SimulatorPage({ data, projects, projectsLoading }) {
               value={goal}
               onChange={e => setGoal(e.target.value)}
               placeholder="e.g. Help children access better education and health outcomes..."
-              rows={3}
+              rows={5}
               style={{
                 ...inputStyle,
                 resize: 'vertical',
