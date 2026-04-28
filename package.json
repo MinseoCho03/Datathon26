@@ -2,6 +2,7 @@
   "name": "datathon26",
   "version": "1.0.0",
   "dependencies": {
-    "@anthropic-ai/sdk": "latest"
+    "@anthropic-ai/sdk": "latest",
+    "react-markdown": "^10.1.0"
   }
 }

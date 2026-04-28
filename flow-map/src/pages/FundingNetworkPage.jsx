@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ScatterChart, Scatter, ZAxis, PieChart, Pie, Cell, Legend, CartesianGrid } from 'recharts'
 
 const WEIGHT_LABEL = 'Funding amount'
 const MAX_FUNDER_RESULTS = 80
@@ -432,6 +433,253 @@ function MetricRow({ label, value }) {
   )
 }
 
+const COLORS = ['#60a5fa', '#34d399', '#f59e0b', '#f87171', '#a78bfa', '#2dd4bf', '#fb7185', '#fb923c']
+
+function CustomTooltip({ active, payload, label, isAmount }) {
+  if (active && payload && payload.length) {
+    return (
+      <div style={{ background: '#0f1e31', border: '1px solid rgba(255,255,255,0.1)', padding: '10px 14px', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+        <p style={{ color: '#e2eaf4', fontSize: 13, fontWeight: 800, marginBottom: 5 }}>{label || payload[0]?.payload?.name || 'Details'}</p>
+        {payload.map((entry, index) => {
+          let val = entry.value
+          if (isAmount) val = fmtAmount(val)
+          return (
+            <p key={index} style={{ color: entry.color || '#94a3b8', fontSize: 12, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <span>{entry.name}:</span>
+              <span style={{ fontWeight: 700, color: '#e2eaf4' }}>{val}</span>
+            </p>
+          )
+        })}
+      </div>
+    );
+  }
+  return null;
+}
+
+function prepareChartData(projects, config) {
+  const map = new Map()
+  
+  projects.forEach(p => {
+    const xVal = p[config.xAxis] || 'Unknown'
+    const yVal = config.yAxis === 'amount' ? (Number(p.amount) || 0) : 1
+    const sizeVal = config.sizeBy === 'amount' ? (Number(p.amount) || 0) : 1
+
+    let colorVal = 'Total'
+    if (config.colorBy && config.colorBy !== 'none' && config.type !== 'pie') {
+      colorVal = p[config.colorBy] || 'Unknown'
+    }
+    
+    if (!map.has(xVal)) {
+      map.set(xVal, { name: truncate(String(xVal), 20), _original: xVal, total: 0, totalSize: 0 })
+    }
+    
+    const item = map.get(xVal)
+    item.total += yVal
+    item.totalSize += sizeVal
+    
+    if (colorVal !== 'Total') {
+      item[colorVal] = (item[colorVal] || 0) + yVal
+      item[`${colorVal}_size`] = (item[`${colorVal}_size`] || 0) + sizeVal
+    }
+  })
+  
+  let result = Array.from(map.values()).sort((a, b) => b.total - a.total).slice(0, 40)
+  
+  if (config.xAxis === 'year') {
+    result = result.sort((a, b) => String(a._original).localeCompare(String(b._original)))
+  }
+  
+  return result
+}
+
+function DesignChartArea({ config, projects }) {
+  const data = useMemo(() => prepareChartData(projects, config), [projects, config])
+
+  if (!data.length) return <div style={{...S.subtle, padding: 20}}>No data available.</div>
+
+  const dataKeys = useMemo(() => {
+    if (!config.colorBy || config.colorBy === 'none' || config.type === 'pie') return ['Total']
+    const keys = new Set()
+    data.forEach(d => Object.keys(d).forEach(k => {
+      if (k !== 'name' && k !== '_original' && k !== 'total' && k !== 'totalSize' && !k.endsWith('_size')) keys.add(k)
+    }))
+    return Array.from(keys).slice(0, 10)
+  }, [data, config])
+
+  const yTickFormatter = config.yAxis === 'amount' ? (v) => `$${v>=1000?v/1000+'B':v>=1?v+'M':v+'K'}` : undefined
+
+  return (
+    <div style={{ width: '100%', height: 500, paddingTop: 20 }}>
+      <ResponsiveContainer>
+        {config.type === 'bar' ? (
+          <BarChart data={data} margin={{ top: 10, right: 30, left: 20, bottom: 80 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+            <XAxis dataKey="name" stroke="#64748b" fontSize={11} angle={-45} textAnchor="end" tick={{ fill: '#94a3b8' }} />
+            <YAxis stroke="#64748b" fontSize={11} tickFormatter={yTickFormatter} tick={{ fill: '#94a3b8' }} />
+            <Tooltip content={<CustomTooltip isAmount={config.yAxis === 'amount'} />} cursor={{fill: 'rgba(255,255,255,0.04)'}} />
+            <Legend wrapperStyle={{ fontSize: 11, bottom: 10 }} />
+            {dataKeys.map((key, i) => (
+              <Bar key={key} dataKey={key} stackId="a" fill={COLORS[i % COLORS.length]} radius={dataKeys.length === 1 ? [4,4,0,0] : [0,0,0,0]} />
+            ))}
+          </BarChart>
+        ) : config.type === 'pie' ? (
+          <PieChart margin={{ top: 10, right: 30, left: 20, bottom: 20 }}>
+            <Pie
+              data={data.slice(0, 15)}
+              dataKey="total"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              outerRadius={180}
+              innerRadius={90}
+              paddingAngle={2}
+              stroke="none"
+            >
+              {data.slice(0, 15).map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip content={<CustomTooltip isAmount={config.yAxis === 'amount'} />} />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+          </PieChart>
+        ) : config.type === 'scatter' ? (
+          <ScatterChart margin={{ top: 20, right: 30, bottom: 80, left: 20 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+            <XAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} angle={-45} textAnchor="end" tick={{ fill: '#94a3b8' }} allowDuplicatedCategory={false} />
+            <YAxis type="number" dataKey="total" stroke="#64748b" fontSize={11} name={config.yAxis} tickFormatter={yTickFormatter} tick={{ fill: '#94a3b8' }} />
+            {config.sizeBy !== 'none' && <ZAxis type="number" dataKey="totalSize" range={[60, 600]} />}
+            <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip isAmount={config.yAxis === 'amount'} />} />
+            <Legend wrapperStyle={{ fontSize: 11, bottom: 10 }} />
+            {dataKeys.map((key, i) => {
+              const seriesData = data.filter(d => d[key] > 0).map(d => ({
+                name: d.name,
+                total: d[key],
+                totalSize: config.sizeBy !== 'none' ? (d[`${key}_size`] || d[key]) : 100
+              }))
+              return (
+                <Scatter key={key} name={key} data={seriesData} fill={COLORS[i % COLORS.length]} opacity={0.7} />
+              )
+            })}
+          </ScatterChart>
+        ) : null}
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+function ChartDesignerConfig({ config, setConfig }) {
+  const dimensions = [
+    { value: 'org', label: 'Funder (Org)' },
+    { value: 'country', label: 'Recipient Country' },
+    { value: 'regionMacro', label: 'Region' },
+    { value: 'sector', label: 'Sector' },
+    { value: 'year', label: 'Year' }
+  ];
+  
+  const measures = [
+    { value: 'amount', label: 'Funding Amount' },
+    { value: 'count', label: 'Project Count' }
+  ];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div>
+        <p style={{ color: '#e2eaf4', fontSize: 13, fontWeight: 800 }}>Chart Designer</p>
+        <p style={{ ...S.subtle, marginTop: 4 }}>Configure your custom visualization.</p>
+      </div>
+
+      <div>
+        <p style={S.label}>Chart Type</p>
+        <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+          {[
+            { id: 'bar', label: 'Bar' },
+            { id: 'pie', label: 'Pie' },
+            { id: 'scatter', label: 'Scatter' },
+          ].map(t => (
+            <button
+              key={t.id}
+              onClick={() => setConfig({ ...config, type: t.id })}
+              style={{
+                padding: '6px 12px',
+                borderRadius: 6,
+                fontSize: 12,
+                fontWeight: 600,
+                border: config.type === t.id ? '1px solid #60a5fa' : '1px solid rgba(255,255,255,0.1)',
+                background: config.type === t.id ? 'rgba(96,165,250,0.15)' : 'rgba(255,255,255,0.03)',
+                color: config.type === t.id ? '#60a5fa' : '#94a3b8',
+                cursor: 'pointer'
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 12 }}>
+        <p style={{...S.label, marginBottom: 8}}>Columns</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div>
+            <p style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Primary Category (X-Axis)</p>
+            <select 
+              value={config.xAxis} 
+              onChange={e => setConfig({...config, xAxis: e.target.value})}
+              style={S.input}
+            >
+              {dimensions.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <p style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Primary Measure (Y-Axis)</p>
+            <select 
+              value={config.yAxis} 
+              onChange={e => setConfig({...config, yAxis: e.target.value})}
+              style={S.input}
+            >
+              {measures.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {(config.type === 'bar' || config.type === 'scatter') && (
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 12 }}>
+          <p style={{...S.label, marginBottom: 8}}>Marks (Color & Size)</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div>
+              <p style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Color By</p>
+              <select 
+                value={config.colorBy} 
+                onChange={e => setConfig({...config, colorBy: e.target.value})}
+                style={S.input}
+              >
+                <option value="none">None</option>
+                {dimensions.filter(d => d.value !== config.xAxis).map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+              </select>
+            </div>
+            
+            {config.type === 'scatter' && (
+              <div>
+                <p style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Size By</p>
+                <select 
+                  value={config.sizeBy} 
+                  onChange={e => setConfig({...config, sizeBy: e.target.value})}
+                  style={S.input}
+                >
+                  <option value="none">None (Uniform)</option>
+                  {measures.filter(m => m.value !== config.yAxis).map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  <option value={config.yAxis}>{measures.find(m => m.value === config.yAxis)?.label}</option>
+                </select>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function FundingNetworkPage({ projects = [], projectsLoading = false }) {
   const [search, setSearch] = useState('')
   const [selectedFunders, setSelectedFunders] = useState([])
@@ -439,6 +687,13 @@ export default function FundingNetworkPage({ projects = [], projectsLoading = fa
   const [hoveredCountry, setHoveredCountry] = useState(null)
   const [highlightedFunder, setHighlightedFunder] = useState(null)
   const [viewMode, setViewMode] = useState('dashboard')
+  const [chartConfig, setChartConfig] = useState({
+    type: 'bar',
+    xAxis: 'sector',
+    yAxis: 'amount',
+    colorBy: 'none',
+    sizeBy: 'none'
+  })
 
   const funders = useMemo(() => buildFunderData(projects), [projects])
   const dataByFunder = useMemo(() => Object.fromEntries(funders.map(funder => [funder.name, funder])), [funders])
@@ -494,90 +749,97 @@ export default function FundingNetworkPage({ projects = [], projectsLoading = fa
         <KpiCard label="Single-source countries" value={coverage.countries.filter(country => country.funders.length === 1).length} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '280px minmax(620px, 1fr) 300px', gap: 16, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: viewMode === 'design' ? '280px minmax(620px, 1fr)' : '280px minmax(620px, 1fr) 300px', gap: 16, alignItems: 'start' }}>
         <aside style={{ ...S.panel, padding: 16, display: 'flex', flexDirection: 'column', gap: 14, position: 'sticky', top: 16 }}>
-          <div>
-            <p style={{ color: '#e2eaf4', fontSize: 13, fontWeight: 800 }}>Funder selector</p>
-            <p style={{ ...S.subtle, marginTop: 4 }}>{funders.length.toLocaleString()} real funders from project records.</p>
-          </div>
+          {viewMode === 'design' ? (
+            <ChartDesignerConfig config={chartConfig} setConfig={setChartConfig} />
+          ) : (
+            <>
+              <div>
+                <p style={{ color: '#e2eaf4', fontSize: 13, fontWeight: 800 }}>Funder selector</p>
+                <p style={{ ...S.subtle, marginTop: 4 }}>{funders.length.toLocaleString()} real funders from project records.</p>
+              </div>
 
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search funders..." style={S.input} />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search funders..." style={S.input} />
 
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <p style={S.label}>Selected funders</p>
-              <button
-                onClick={() => { setSelectedFunders([]); setSelected(null); setHighlightedFunder(null) }}
-                style={{ ...S.quietButton, padding: '5px 8px' }}
-              >
-                Reset
-              </button>
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
-              {selectedFunders.map(name => {
-                const highlighted = highlightedFunder === name || hoveredFunders.includes(name)
-                return (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <p style={S.label}>Selected funders</p>
                   <button
-                    key={name}
-                    onClick={() => { setSelected({ type: 'funder', name }); setHighlightedFunder(prev => prev === name ? null : name) }}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      maxWidth: '100%',
-                      padding: '6px 8px',
-                      borderRadius: 999,
-                      border: highlighted ? '1px solid rgba(96,165,250,0.5)' : '1px solid rgba(35,102,201,0.28)',
-                      background: highlighted ? 'rgba(35,102,201,0.22)' : 'rgba(35,102,201,0.1)',
-                      color: '#c8dff2',
-                      cursor: 'pointer',
-                      fontSize: 11,
-                      fontWeight: 700,
-                    }}
-                    title={name}
+                    onClick={() => { setSelectedFunders([]); setSelected(null); setHighlightedFunder(null) }}
+                    style={{ ...S.quietButton, padding: '5px 8px' }}
                   >
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{truncate(name, 28)}</span>
-                    <span
-                      onClick={event => { event.stopPropagation(); removeFunder(name) }}
-                      style={{ color: '#64748b', fontSize: 14, lineHeight: 1 }}
-                    >
-                      ×
-                    </span>
+                    Reset
                   </button>
-                )
-              })}
-              {!selectedFunders.length && <p style={S.subtle}>No funders selected.</p>}
-            </div>
-          </div>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                  {selectedFunders.map(name => {
+                    const highlighted = highlightedFunder === name || hoveredFunders.includes(name)
+                    return (
+                      <button
+                        key={name}
+                        onClick={() => { setSelected({ type: 'funder', name }); setHighlightedFunder(prev => prev === name ? null : name) }}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          maxWidth: '100%',
+                          padding: '6px 8px',
+                          borderRadius: 999,
+                          border: highlighted ? '1px solid rgba(96,165,250,0.5)' : '1px solid rgba(35,102,201,0.28)',
+                          background: highlighted ? 'rgba(35,102,201,0.22)' : 'rgba(35,102,201,0.1)',
+                          color: '#c8dff2',
+                          cursor: 'pointer',
+                          fontSize: 11,
+                          fontWeight: 700,
+                        }}
+                        title={name}
+                      >
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{truncate(name, 28)}</span>
+                        <span
+                          onClick={event => { event.stopPropagation(); removeFunder(name) }}
+                          style={{ color: '#64748b', fontSize: 14, lineHeight: 1 }}
+                        >
+                          ×
+                        </span>
+                      </button>
+                    )
+                  })}
+                  {!selectedFunders.length && <p style={S.subtle}>No funders selected.</p>}
+                </div>
+              </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 430, overflowY: 'auto', paddingRight: 2 }}>
-            {projectsLoading && !funders.length && <p style={{ ...S.subtle, padding: '10px 2px' }}>Loading project data...</p>}
-            {filteredFunders.map(funder => (
-              <button
-                key={funder.name}
-                onClick={() => selectFunder(funder.name)}
-                style={{ width: '100%', textAlign: 'left', background: '#0b1829', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, padding: '10px 11px', color: '#c8dff2', cursor: 'pointer' }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(96,165,250,0.35)'; e.currentTarget.style.background = 'rgba(35,102,201,0.1)' }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'; e.currentTarget.style.background = '#0b1829' }}
-              >
-                <span style={{ display: 'block', fontSize: 12, color: '#e2eaf4', fontWeight: 700 }}>{funder.name}</span>
-                <span style={{ display: 'block', fontSize: 10, color: '#475569', marginTop: 3 }}>{funder.countries.length} countries · {fmtAmount(funder.total)}</span>
-              </button>
-            ))}
-            {!projectsLoading && !filteredFunders.length && <p style={{ ...S.subtle, padding: '10px 2px' }}>No matching funders to add.</p>}
-          </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 430, overflowY: 'auto', paddingRight: 2 }}>
+                {projectsLoading && !funders.length && <p style={{ ...S.subtle, padding: '10px 2px' }}>Loading project data...</p>}
+                {filteredFunders.map(funder => (
+                  <button
+                    key={funder.name}
+                    onClick={() => selectFunder(funder.name)}
+                    style={{ width: '100%', textAlign: 'left', background: '#0b1829', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, padding: '10px 11px', color: '#c8dff2', cursor: 'pointer' }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(96,165,250,0.35)'; e.currentTarget.style.background = 'rgba(35,102,201,0.1)' }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'; e.currentTarget.style.background = '#0b1829' }}
+                  >
+                    <span style={{ display: 'block', fontSize: 12, color: '#e2eaf4', fontWeight: 700 }}>{funder.name}</span>
+                    <span style={{ display: 'block', fontSize: 10, color: '#475569', marginTop: 3 }}>{funder.countries.length} countries · {fmtAmount(funder.total)}</span>
+                  </button>
+                ))}
+                {!projectsLoading && !filteredFunders.length && <p style={{ ...S.subtle, padding: '10px 2px' }}>No matching funders to add.</p>}
+              </div>
+            </>
+          )}
         </aside>
 
         <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ ...S.panel, padding: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 12 }}>
               <div>
-                <p style={{ color: '#e2eaf4', fontSize: 13, fontWeight: 800 }}>Country coverage</p>
-                <p style={{ ...S.subtle, marginTop: 3 }}>{WEIGHT_LABEL} is summed from real project amounts. Bottom quartile countries are marked as weak coverage.</p>
+                <p style={{ color: '#e2eaf4', fontSize: 13, fontWeight: 800 }}>{viewMode === 'design' ? 'Custom Visualization' : 'Country coverage'}</p>
+                <p style={{ ...S.subtle, marginTop: 3 }}>{viewMode === 'design' ? 'Exploring entire dataset or selection.' : `${WEIGHT_LABEL} is summed from real project amounts. Bottom quartile countries are marked as weak coverage.`}</p>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
                 <div style={{ display: 'inline-flex', padding: 3, borderRadius: 8, background: '#070f1c', border: '1px solid rgba(255,255,255,0.08)' }}>
                   {[
+                    ['design', 'Design Chart'],
                     ['dashboard', 'Dashboard'],
                     ['graph', 'Graph'],
                   ].map(([mode, label]) => (
@@ -603,7 +865,9 @@ export default function FundingNetworkPage({ projects = [], projectsLoading = fa
               </div>
             </div>
 
-            {!selectedFunders.length ? (
+            {viewMode === 'design' ? (
+              <DesignChartArea config={chartConfig} projects={projects} />
+            ) : !selectedFunders.length ? (
               <div style={{ minHeight: 360, display: 'grid', placeItems: 'center', border: '1px dashed rgba(255,255,255,0.12)', borderRadius: 10, background: 'rgba(255,255,255,0.025)' }}>
                 <div style={{ textAlign: 'center' }}>
                   <p style={{ color: '#e2eaf4', fontSize: 14, fontWeight: 800 }}>Select funders to build a coverage map.</p>
@@ -650,7 +914,7 @@ export default function FundingNetworkPage({ projects = [], projectsLoading = fa
           </div>
         </section>
 
-        <StrategicReading selected={selected} coverage={coverage} dataByFunder={dataByFunder} />
+        {viewMode !== 'design' && <StrategicReading selected={selected} coverage={coverage} dataByFunder={dataByFunder} />}
       </div>
     </div>
   )
