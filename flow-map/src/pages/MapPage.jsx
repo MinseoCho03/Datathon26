@@ -2,8 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import FlowMap from '../components/FlowMap.jsx'
 import CountryProfile from '../components/CountryProfile.jsx'
 import {
-  BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis,
-  Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
 } from 'recharts'
 
 function fmt(v) {
@@ -25,12 +24,16 @@ const TT = ({ active, payload, label }) => {
   )
 }
 
-function Kpi({ label, value, sub }) {
+function Kpi({ label, value, sub, color = '#60a5fa' }) {
   return (
-    <div style={{ background: '#0f1e31', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '14px 18px' }}>
-      <p style={{ fontSize: 11, color: '#475569', marginBottom: 4 }}>{label}</p>
-      <p style={{ fontSize: 20, fontWeight: 700, color: '#e2eaf4' }}>{value}</p>
-      {sub && <p style={{ fontSize: 11, color: '#334155', marginTop: 3 }}>{sub}</p>}
+    <div style={{ position: 'relative', overflow: 'hidden', background: '#0f1e31', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '16px 18px 15px' }}>
+      <div style={{ position: 'absolute', inset: '0 auto 0 0', width: 3, background: color }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
+        <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, boxShadow: `0 0 16px ${color}66` }} />
+        <p style={{ fontSize: 10, color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</p>
+      </div>
+      <p style={{ fontSize: 24, fontWeight: 800, color: '#e2eaf4', letterSpacing: 0 }}>{value}</p>
+      {sub && <p style={{ fontSize: 11, color: '#475569', marginTop: 5, lineHeight: 1.35 }}>{sub}</p>}
     </div>
   )
 }
@@ -47,10 +50,13 @@ function Sel({ label, value, onChange, options }) {
   )
 }
 
-function ChartCard({ title, children }) {
+function ChartCard({ title, sub, children }) {
   return (
-    <div style={{ background: '#0f1e31', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '14px 16px' }}>
-      <p style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 10 }}>{title}</p>
+    <div style={{ background: '#0f1e31', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '16px 18px' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+        <p style={{ fontSize: 13, fontWeight: 700, color: '#c8dff2' }}>{title}</p>
+        {sub && <p style={{ fontSize: 10, color: '#475569', fontWeight: 600, whiteSpace: 'nowrap' }}>{sub}</p>}
+      </div>
       {children}
     </div>
   )
@@ -80,22 +86,35 @@ function SectorLegend({ data }) {
   )
 }
 
-// Div-based horizontal bar list — immune to SVG clipping, labels always fully visible
-function BarList({ data, colorFn, single }) {
+// Div-based horizontal bar list — immune to SVG clipping, labels always fully visible.
+function BarList({ data, colorFn, single, showRank = true }) {
   const max = Math.max(...data.map(d => d.amount), 1)
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '2px 0' }}>
-      {data.map((d, i) => (
-        <div key={d.name} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ width: 130, fontSize: 11, color: '#64748b', textAlign: 'right', flexShrink: 0, lineHeight: 1.2 }}>
-            {d.name}
-          </span>
-          <div style={{ flex: 1, height: 10, background: 'rgba(255,255,255,0.06)', borderRadius: 3 }}>
-            <div style={{ width: `${(d.amount / max) * 100}%`, height: '100%', background: colorFn ? colorFn(i) : single, borderRadius: '0 3px 3px 0', minWidth: 2 }} />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 11, padding: '2px 0' }}>
+      {data.map((d, i) => {
+        const color = colorFn ? colorFn(i) : single
+
+        return (
+          <div key={d.name} style={{ display: 'grid', gridTemplateColumns: showRank ? '24px minmax(0,1fr) auto' : 'minmax(0,1fr) auto', gap: 9, alignItems: 'center' }}>
+            {showRank && (
+              <span style={{ width: 22, height: 22, borderRadius: 6, background: `${color}22`, border: `1px solid ${color}44`, color, display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 800 }}>
+                {i + 1}
+              </span>
+            )}
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 5 }}>
+                <span style={{ fontSize: 12, color: '#c8dff2', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.name}>
+                  {d.name}
+                </span>
+              </div>
+              <div style={{ height: 7, background: 'rgba(255,255,255,0.06)', borderRadius: 999, overflow: 'hidden' }}>
+                <div style={{ width: `${(d.amount / max) * 100}%`, height: '100%', background: color, borderRadius: 999, minWidth: 3 }} />
+              </div>
+            </div>
+            <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt(d.amount)}</span>
           </div>
-          <span style={{ fontSize: 10, color: '#475569', width: 46, flexShrink: 0 }}>{fmt(d.amount)}</span>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -329,15 +348,16 @@ export default function MapPage({ data, projects, onNavigate }) {
 
       {/* KPI cards */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#7ab4d8', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Worldwide OECD Data</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }} />
+          <span style={{ fontSize: 15, fontWeight: 800, color: '#7ab4d8', textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'center', whiteSpace: 'nowrap' }}>Worldwide OECD Data</span>
           <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }} />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
-          <Kpi label="Total Funding" value={fmt(sourceKpis.total)} sub="Full OECD source data" />
-          <Kpi label="Recipient Countries" value={sourceKpis.countries} sub="Original recipient fields" />
-          <Kpi label="Donor Countries" value={sourceKpis.donors} sub="Original donor fields" />
-          <Kpi label="Flow Records" value={sourceKpis.records.toLocaleString()} sub="Original positive-disbursement rows" />
+          <Kpi label="Total Funding" value={fmt(sourceKpis.total)} sub="Full OECD source data" color="#34d399" />
+          <Kpi label="Recipient Countries" value={sourceKpis.countries} sub="Original recipient fields" color="#60a5fa" />
+          <Kpi label="Donor Countries" value={sourceKpis.donors} sub="Original donor fields" color="#f59e0b" />
+          <Kpi label="Flow Records" value={sourceKpis.records.toLocaleString()} sub="Positive-disbursement rows" color="#a78bfa" />
         </div>
       </div>
 
@@ -361,14 +381,7 @@ export default function MapPage({ data, projects, onNavigate }) {
 
         {/* Funding by Region */}
         <ChartCard title="Funding by Region">
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={charts.region} layout="vertical" margin={{ left: 0, right: 12, top: 0, bottom: 0 }}>
-              <XAxis type="number" hide />
-              <YAxis type="category" dataKey="name" width={72} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} interval={0} />
-              <Tooltip content={<TT />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
-              <Bar dataKey="amount" radius={[0,4,4,0]} maxBarSize={16} fill="#2366c9" />
-            </BarChart>
-          </ResponsiveContainer>
+          <BarList data={charts.region} single="#60a5fa" />
         </ChartCard>
 
         {/* Top Donor Countries */}
