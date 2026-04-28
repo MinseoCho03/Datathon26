@@ -203,9 +203,18 @@ export default function CountryProfile({ recipient, onClose, sectorDnaData, coun
       {yearTrend.length > 0 && (
         <div>
           <p style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Year Trend</p>
-          <ResponsiveContainer width="100%" height={90}>
-            <LineChart data={yearTrend} margin={{ left: 12, right: 12, top: 6, bottom: 0 }}>
-              <XAxis dataKey="year" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+          <ResponsiveContainer width="100%" height={108}>
+            <LineChart data={yearTrend} margin={{ left: 12, right: 12, top: 6, bottom: 14 }}>
+              <XAxis
+                dataKey="year"
+                tick={{ fill: '#64748b', fontSize: 10 }}
+                axisLine={false}
+                tickLine={false}
+                interval={0}
+                minTickGap={0}
+                tickMargin={8}
+                padding={{ left: 18, right: 18 }}
+              />
               <YAxis hide />
               <Tooltip content={<CustomTooltip />} />
               <Line type="monotone" dataKey="amount" stroke="#34d399" strokeWidth={2} dot={{ r: 3, fill: '#0d846a', strokeWidth: 0 }} activeDot={{ r: 5 }} />

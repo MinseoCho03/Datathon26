@@ -3,7 +3,7 @@ import FlowMap from '../components/FlowMap.jsx'
 import CountryProfile from '../components/CountryProfile.jsx'
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis,
-  Tooltip, ResponsiveContainer, Legend,
+  Tooltip, ResponsiveContainer,
 } from 'recharts'
 
 function fmt(v) {
@@ -52,6 +52,30 @@ function ChartCard({ title, children }) {
     <div style={{ background: '#0f1e31', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '14px 16px' }}>
       <p style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 10 }}>{title}</p>
       {children}
+    </div>
+  )
+}
+
+function SectorLegend({ data }) {
+  const total = data.reduce((sum, d) => sum + Number(d.value || 0), 0) || 1
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+      {data.map((d, i) => {
+        const pct = Math.round((Number(d.value || 0) / total) * 100)
+
+        return (
+          <div key={d.name} style={{ display: 'grid', gridTemplateColumns: '10px minmax(0,1fr) auto', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: COLORS[i % COLORS.length] }} />
+            <span style={{ fontSize: 12, color: '#c8dff2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.name}>
+              {d.name}
+            </span>
+            <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>
+              {pct}%
+            </span>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -322,15 +346,17 @@ export default function MapPage({ data, projects, onNavigate }) {
 
         {/* Sector — PIE (year-only) */}
         <ChartCard title={`Funding by Sector${filters.year !== 'All' ? ` · ${filters.year}` : ' · All Years'}`}>
-          <ResponsiveContainer width="100%" height={220}>
-            <PieChart margin={{ left: 10, right: 0, top: 0, bottom: 0 }}>
-              <Pie data={charts.sectorPie} dataKey="value" nameKey="name" cx="43%" cy="50%" innerRadius={45} outerRadius={80} paddingAngle={2}>
-                {charts.sectorPie.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-              </Pie>
-              <Tooltip content={<TT />} />
-              <Legend layout="vertical" align="right" verticalAlign="middle" iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 10, color: '#64748b', paddingLeft: 8 }} />
-            </PieChart>
-          </ResponsiveContainer>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(170px, 0.95fr) minmax(180px, 1.05fr)', alignItems: 'center', gap: 18, minHeight: 220 }}>
+            <ResponsiveContainer width="100%" height={210}>
+              <PieChart margin={{ left: 0, right: 0, top: 0, bottom: 0 }}>
+                <Pie data={charts.sectorPie} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={48} outerRadius={82} paddingAngle={2}>
+                  {charts.sectorPie.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                </Pie>
+                <Tooltip content={<TT />} />
+              </PieChart>
+            </ResponsiveContainer>
+            <SectorLegend data={charts.sectorPie} />
+          </div>
         </ChartCard>
 
         {/* Funding by Region */}
