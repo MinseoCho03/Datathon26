@@ -104,16 +104,8 @@ export default function Sidebar({ page, onNavigate, collapsed, onToggle }) {
         )}
       </div>
 
-      {/* Account */}
-      {!collapsed && (
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-          <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,#2366c9,#0d846a)', display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 700, color: '#fff', flexShrink: 0 }}>GF</div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#c8dff2', whiteSpace: 'nowrap' }}>Gates Foundation</div>
-        </div>
-      )}
-
       {/* Nav */}
-      <nav style={{ padding: collapsed ? '12px 8px' : '12px 8px', flex: 1, overflowY: 'auto' }}>
+      <nav style={{ padding: '12px 8px' }}>
         {!collapsed && (
           <div style={{ fontSize: 10, fontWeight: 600, color: '#334155', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '4px 6px 8px', whiteSpace: 'nowrap' }}>
             Funder Portal
@@ -137,17 +129,17 @@ export default function Sidebar({ page, onNavigate, collapsed, onToggle }) {
         })}
       </nav>
 
-      {/* Collapse toggle */}
+      {/* Collapse toggle — placed right after nav so it's always accessible */}
       <button
         onClick={onToggle}
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         style={{
-          margin: '8px', padding: collapsed ? '10px 0' : '9px 12px',
+          margin: '0 8px 8px', padding: collapsed ? '10px 0' : '9px 12px',
           borderRadius: 8, border: '1px solid rgba(35,102,201,0.4)',
           background: 'rgba(35,102,201,0.15)', color: '#60a5fa',
           cursor: 'pointer', display: 'flex', alignItems: 'center',
           justifyContent: collapsed ? 'center' : 'flex-start',
-          gap: 8, flexShrink: 0, width: collapsed ? 'calc(100% - 16px)' : 'calc(100% - 16px)',
+          gap: 8, flexShrink: 0, width: 'calc(100% - 16px)',
           fontSize: 12, fontWeight: 500,
         }}
       >
@@ -158,6 +150,8 @@ export default function Sidebar({ page, onNavigate, collapsed, onToggle }) {
         </svg>
         {!collapsed && <span>Collapse</span>}
       </button>
+
+      <div style={{ flex: 1 }} />
     </aside>
   )
 }

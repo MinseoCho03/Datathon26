@@ -24,7 +24,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 }
 
 // sectorDnaData: [{sector, amount}] filtered by year only (not sector), passed from MapPage
-export default function CountryProfile({ recipient, onClose, sectorDnaData, countryOrgs = [] }) {
+export default function CountryProfile({ recipient, onClose, sectorDnaData, countryOrgs = [], onOrgClick }) {
   const [donorView, setDonorView] = useState('countries')
   if (!recipient) {
     return (
@@ -139,15 +139,21 @@ export default function CountryProfile({ recipient, onClose, sectorDnaData, coun
           ) : countryOrgs.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               {countryOrgs.map((o, i) => (
-                <div key={o.org} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div key={o.org}
+                  onClick={() => onOrgClick?.(o.org)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: onOrgClick ? 'pointer' : 'default', borderRadius: 6, padding: '2px 4px', margin: '0 -4px', transition: 'background 0.1s' }}
+                  onMouseEnter={e => { if (onOrgClick) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                >
                   <span style={{ width: 16, height: 16, borderRadius: '50%', background: COLORS[i % COLORS.length], display: 'grid', placeItems: 'center', fontSize: 9, fontWeight: 700, color: '#070f1c', flexShrink: 0 }}>{i + 1}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: 11, color: '#c8dff2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.org}</p>
+                    <p style={{ fontSize: 11, color: onOrgClick ? '#7ab4d8' : '#c8dff2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.org}</p>
                     <p style={{ fontSize: 10, color: '#475569' }}>{o.donorCountry}</p>
                   </div>
                   <span style={{ fontSize: 11, color: '#64748b', flexShrink: 0 }}>{fmt(o.amount)}</span>
                 </div>
               ))}
+              {onOrgClick && <p style={{ fontSize: 10, color: '#334155', marginTop: 2 }}>Click an org to view its funding history</p>}
             </div>
           ) : (
             <p style={{ fontSize: 11, color: '#334155' }}>No project-level data for this country in the current view.</p>
@@ -173,10 +179,7 @@ export default function CountryProfile({ recipient, onClose, sectorDnaData, coun
               >
                 {pieSectors.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
               </Pie>
-              <Tooltip
-                formatter={v => fmt(v)}
-                contentStyle={{ background: '#070f1c', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 11, color: '#c8dff2' }}
-              />
+              <Tooltip content={<CustomTooltip />} />
               <Legend
                 layout="horizontal"
                 align="center"

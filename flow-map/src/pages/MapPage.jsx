@@ -105,7 +105,7 @@ function CountrySearch({ countries, onSelect }) {
   )
 }
 
-export default function MapPage({ data, projects }) {
+export default function MapPage({ data, projects, onNavigate }) {
   const [selectedCountry, setSelectedCountry] = useState(null)
   const [filters, setFilters] = useState({ sector: 'All', year: 'All', topN: 5 })
   const setFilter = (k, v) => setFilters(p => ({ ...p, [k]: v }))
@@ -261,9 +261,20 @@ export default function MapPage({ data, projects }) {
             onClose={() => setSelectedCountry(null)}
             sectorDnaData={sectorDnaData}
             countryOrgs={countryOrgs}
+            onOrgClick={onNavigate}
           />
         </div>
       </div>
+
+      {/* Narrative — per-country summary, shown above KPI section */}
+      {selectedRecipient && (
+        <div style={{ background: '#0f1e31', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '12px 18px', fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>
+          <strong style={{ color: '#c8dff2' }}>{selectedRecipient.country}</strong> received{' '}
+          <strong style={{ color: '#34d399' }}>{fmt(selectedRecipient.total)}</strong> in the current view.
+          {selectedRecipient.topDonors?.[0] && <>{' '}<strong style={{ color: '#60a5fa' }}>{selectedRecipient.topDonors[0].donorCountry.replace("China (People's Republic of)", 'China')}</strong> is the largest donor-country source ({fmt(selectedRecipient.topDonors[0].amount)}).</>}
+          {selectedRecipient.topSectors?.[0] && <>{' '}<strong style={{ color: '#f59e0b' }}>{selectedRecipient.topSectors[0].sector}</strong> is the dominant sector.</>}
+        </div>
+      )}
 
       {/* KPI cards */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -289,7 +300,7 @@ export default function MapPage({ data, projects }) {
               <Pie data={charts.sectorPie} dataKey="value" nameKey="name" cx="43%" cy="50%" innerRadius={45} outerRadius={80} paddingAngle={2}>
                 {charts.sectorPie.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
               </Pie>
-              <Tooltip formatter={v => fmt(v)} contentStyle={{ background: '#070f1c', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 11, color: '#c8dff2' }} />
+              <Tooltip content={<TT />} />
               <Legend layout="vertical" align="right" verticalAlign="middle" iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 10, color: '#64748b', paddingLeft: 8 }} />
             </PieChart>
           </ResponsiveContainer>
@@ -332,9 +343,9 @@ export default function MapPage({ data, projects }) {
         {/* Top Recipient Countries */}
         <ChartCard title="Top Recipient Countries">
           <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={charts.country} layout="vertical" margin={{ left: 16, right: 12, top: 0, bottom: 0 }}>
+            <BarChart data={charts.country} layout="vertical" margin={{ left: 110, right: 12, top: 0, bottom: 0 }}>
               <XAxis type="number" hide />
-              <YAxis type="category" dataKey="name" width={110} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} interval={0} />
+              <YAxis type="category" dataKey="name" width={8} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} interval={0} />
               <Tooltip content={<TT />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
               <Bar dataKey="amount" radius={[0,4,4,0]} maxBarSize={16} fill="#0d846a" />
             </BarChart>
@@ -342,15 +353,6 @@ export default function MapPage({ data, projects }) {
         </ChartCard>
       </div>
 
-      {/* Narrative */}
-      {selectedRecipient && (
-        <div style={{ background: '#0f1e31', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '12px 18px', fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>
-          <strong style={{ color: '#c8dff2' }}>{selectedRecipient.country}</strong> received{' '}
-          <strong style={{ color: '#34d399' }}>{fmt(selectedRecipient.total)}</strong> in the current view.
-          {selectedRecipient.topDonors?.[0] && <>{' '}<strong style={{ color: '#60a5fa' }}>{selectedRecipient.topDonors[0].donorCountry.replace("China (People's Republic of)", 'China')}</strong> is the largest donor-country source ({fmt(selectedRecipient.topDonors[0].amount)}).</>}
-          {selectedRecipient.topSectors?.[0] && <>{' '}<strong style={{ color: '#f59e0b' }}>{selectedRecipient.topSectors[0].sector}</strong> is the dominant sector.</>}
-        </div>
-      )}
     </div>
   )
 }

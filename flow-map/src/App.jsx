@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Sidebar from './components/Sidebar.jsx'
 import MapPage from './pages/MapPage.jsx'
 import ProjectsPage from './pages/ProjectsPage.jsx'
@@ -20,6 +20,12 @@ export default function App() {
   const [collapsed, setCollapsed]     = useState(false)
   const [projects, setProjects]       = useState(null)
   const [projectsLoading, setProjectsLoading] = useState(false)
+  const [historyOrg, setHistoryOrg]   = useState('Gates Foundation')
+
+  const navigateToHistory = useCallback((orgName) => {
+    setHistoryOrg(orgName)
+    setPage('history')
+  }, [])
 
   useEffect(() => {
     fetch('./flow-data.json')
@@ -79,10 +85,10 @@ export default function App() {
 
         {/* Page content */}
         <main style={{ flex: 1, overflowY: 'auto', background: '#0b1829' }}>
-          {page === 'map'       && <MapPage       data={data} projects={projects} />}
+          {page === 'map'       && <MapPage       data={data} projects={projects} onNavigate={navigateToHistory} />}
           {page === 'projects'  && <ProjectsPage  data={data} projects={projects} projectsLoading={projectsLoading} />}
           {page === 'simulator' && <SimulatorPage data={data} projects={projects} projectsLoading={projectsLoading} />}
-          {page === 'history'   && <HistoryPage   data={data} />}
+          {page === 'history'   && <HistoryPage   data={data} projects={projects} projectsLoading={projectsLoading} initialOrg={historyOrg} />}
         </main>
       </div>
     </div>

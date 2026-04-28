@@ -376,7 +376,7 @@ function AllocationCard({ alloc, rank, risk, projects, projectsLoading }) {
 
           <div style={{flex:1}} />
           <button onClick={() => setFlipped(true)}
-            style={{background:'none', border:'none', color:'#334155', fontSize:10, cursor:'pointer', padding:'4px 0', textAlign:'center', width:'100%'}}>
+            style={{background:'rgba(35,102,201,0.1)', border:'1px solid rgba(35,102,201,0.25)', borderRadius:6, color:'#7ab4d8', fontSize:10, cursor:'pointer', padding:'5px 0', textAlign:'center', width:'100%'}}>
             ▼ see active projects in {alloc.country}
           </button>
         </div>
