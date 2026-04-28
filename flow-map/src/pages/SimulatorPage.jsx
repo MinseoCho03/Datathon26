@@ -23,8 +23,10 @@ const scoreAct = (t, max) => clamp((t / (max || 1)) * 100)
 
 const scoreMom = (byYear, years) => {
   if (!years?.length) return 50
+
   const f = byYear[years[0]] || 0
   const l = byYear[years[years.length - 1]] || 0
+
   return f <= 0 ? 50 : clamp(50 + ((l - f) / f) * 100)
 }
 
@@ -405,78 +407,37 @@ function BudgetInput({ value, onChange }) {
 // ── Markdown styling for AI output ────────────────────────────────────────────
 const markdownComponents = {
   h1: ({ children }) => (
-    <h3
-      style={{
-        fontSize: 14,
-        fontWeight: 700,
-        color: '#e2eaf4',
-        margin: '0 0 8px',
-      }}
-    >
+    <h3 style={{ fontSize: 14, fontWeight: 700, color: '#e2eaf4', margin: '0 0 8px' }}>
       {children}
     </h3>
   ),
   h2: ({ children }) => (
-    <h3
-      style={{
-        fontSize: 14,
-        fontWeight: 700,
-        color: '#e2eaf4',
-        margin: '0 0 8px',
-      }}
-    >
+    <h3 style={{ fontSize: 14, fontWeight: 700, color: '#e2eaf4', margin: '0 0 8px' }}>
       {children}
     </h3>
   ),
   h3: ({ children }) => (
-    <h3
-      style={{
-        fontSize: 13,
-        fontWeight: 700,
-        color: '#e2eaf4',
-        margin: '10px 0 6px',
-      }}
-    >
+    <h3 style={{ fontSize: 13, fontWeight: 700, color: '#e2eaf4', margin: '10px 0 6px' }}>
       {children}
     </h3>
   ),
   p: ({ children }) => (
-    <p
-      style={{
-        margin: '0 0 8px',
-        lineHeight: 1.6,
-      }}
-    >
+    <p style={{ margin: '0 0 8px', lineHeight: 1.6 }}>
       {children}
     </p>
   ),
   ul: ({ children }) => (
-    <ul
-      style={{
-        margin: '6px 0 0 16px',
-        padding: 0,
-      }}
-    >
+    <ul style={{ margin: '6px 0 0 16px', padding: 0 }}>
       {children}
     </ul>
   ),
   li: ({ children }) => (
-    <li
-      style={{
-        marginBottom: 5,
-        lineHeight: 1.55,
-      }}
-    >
+    <li style={{ marginBottom: 5, lineHeight: 1.55 }}>
       {children}
     </li>
   ),
   strong: ({ children }) => (
-    <strong
-      style={{
-        color: '#e2eaf4',
-        fontWeight: 700,
-      }}
-    >
+    <strong style={{ color: '#e2eaf4', fontWeight: 700 }}>
       {children}
     </strong>
   ),
@@ -500,17 +461,18 @@ function AIExplanation({ portfolio, params }) {
       .map(
         (a, i) =>
           `${i + 1}. ${a.country} — ${a.sector} (${fmt(a.allocation)}, ${a.sharePct}% of budget)\n` +
-          `   Goal Match: ${a.goalMatch || 'Neutral'} · White Space: ${Math.round(a.wsScore)}/100 · ` +
-          `Concentration: ${Math.round(a.concScore)}/100 · Sector Activity: ${Math.round(a.actScore)}/100 · ` +
-          `Momentum: ${Math.round(a.momScore)}/100\n` +
+          `   Goal Match: ${a.goalMatch || 'Neutral'} · White Space: ${wsLabel(a.wsScore)} · ` +
+          `Donor Concentration: ${concLabel(a.topDonorShare)} · ` +
+          `Sector Activity: ${a.actScore > 60 ? 'High' : a.actScore > 30 ? 'Medium' : 'Low'} · ` +
+          `Momentum: ${a.momScore > 60 ? 'Rising' : a.momScore > 45 ? 'Stable' : 'Declining'}\n` +
           `   Top donors: ${a.topDonors.join(', ') || 'none recorded'}`
       )
       .join('\n\n')
 
-    const hasGoal = goal && goal.trim().length > 10
+    const hasGoal = goal && goal.trim().length > 3
     const goalContext = hasGoal
       ? `\nFoundation's Strategic Goal: "${goal.trim()}"`
-      : `\nNo strategic goal specified. Use the ${risk} risk strategy.`
+      : `\nNo strategic goal specified. Use the ${risk} risk strategy as the default objective.`
 
     const content = [
       `A foundation is deploying ${fmt(budget)} with a ${risk} risk strategy.${goalContext}`,
@@ -518,37 +480,45 @@ function AIExplanation({ portfolio, params }) {
       portfolioLines,
       hasGoal
         ? `
-Write a short markdown explanation for a foundation leader.
+Write a clear markdown explanation for a foundation leader.
 
 Use exactly this structure:
 ### Why this fits
-- Explain how the portfolio connects to the goal in one short bullet.
-- Explain the funding logic in one short bullet.
+- Explain how the portfolio connects to the foundation goal.
+- Explain the data logic behind the recommendation, using white space, donor concentration, sector activity, or sector momentum.
+- Mention one practical tradeoff or caveat the foundation should consider.
 
 ### First priority
-- Pick the first country-sector allocation to prioritize and explain why in one sentence.
+- Pick the first country-sector allocation to prioritize.
+- Explain why it is the best starting point in 2 concise sentences.
 
 Rules:
-- Maximum 90 words.
-- Do not repeat every country.
-- Do not write long paragraphs.
-- Do not mention markdown.
+- Maximum 140 words.
+- Use concise bullets.
+- No duplicated sentences.
+- Do not repeat the full country list.
+- Do not mention numeric scores.
+- Use qualitative labels instead, such as strong goal match, high white space, low donor concentration, or rising momentum.
+- Add enough explanation to be useful, but avoid long paragraphs.
 `
+
         : `
-Write a short markdown explanation for a foundation leader.
+Write a clear markdown explanation for a foundation leader.
 
 Use exactly this structure:
 ### Why this fits
-- Explain why this portfolio fits the ${risk} strategy in one short bullet.
-- Explain the funding logic in one short bullet.
+- Explain why this portfolio fits the ${risk} strategy.
+- Explain the data logic behind the recommendation, using white space, donor concentration, sector activity, or sector momentum.
+- Mention one practical tradeoff or caveat the foundation should consider.
 
 ### First priority
-- Pick the first country-sector allocation to prioritize and explain why in one sentence.
+- Pick the first country-sector allocation to prioritize.
+- Explain why it is the best starting point in 2 concise sentences.
 
 Rules:
-- Maximum 90 words.
+- Maximum 110 words.
+- Use readable bullets, not long paragraphs.
 - Do not repeat every country.
-- Do not write long paragraphs.
 - Do not mention markdown.
 `,
     ].join('\n')
@@ -561,23 +531,24 @@ Rules:
           system: `
 You are a concise philanthropic strategy advisor.
 Return valid markdown only.
-Keep the answer short, readable, and executive-friendly.
+Keep the answer readable, specific, and executive-friendly.
 
 Format:
 ### Why this fits
-- One short bullet explaining fit with the foundation goal or risk strategy.
-- One short bullet explaining the portfolio logic.
+- One bullet for strategic fit.
+- One bullet for portfolio logic.
 
 ### First priority
 - Recommend one country-sector allocation first.
-- Explain why in one sentence.
+- Explain why in 2 short sentences.
 
 Rules:
-- Maximum 90 words.
-- No long paragraphs.
+- Maximum 110 words.
+- No numeric scores.
+- Use qualitative labels only.
 - No duplicated sentences.
 - Do not repeat the full country list.
-- Do not use more than 3 bullets total.
+- Avoid long paragraphs.
 `.trim(),
           messages: [{ role: 'user', content }],
         }),
@@ -660,23 +631,12 @@ Rules:
         }}
       >
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 2a10 10 0 1 1 0 20A10 10 0 0 1 12 2z" />
             <path d="M12 8v4m0 4h.01" />
           </svg>
           AI Strategy Explanation
-          {loading && (
-            <span style={{ fontSize: 11, color: '#475569' }}>
-              generating…
-            </span>
-          )}
+          {loading && <span style={{ fontSize: 11, color: '#475569' }}>generating…</span>}
         </span>
 
         <svg
@@ -696,23 +656,9 @@ Rules:
       </button>
 
       {open && (
-        <div
-          style={{
-            padding: '0 16px 16px',
-            borderTop: '1px solid rgba(35,102,201,0.15)',
-          }}
-        >
+        <div style={{ padding: '0 16px 16px', borderTop: '1px solid rgba(35,102,201,0.15)' }}>
           {loading && !text && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '14px 0',
-                color: '#475569',
-                fontSize: 12,
-              }}
-            >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 0', color: '#475569', fontSize: 12 }}>
               <div
                 style={{
                   width: 12,
@@ -730,25 +676,13 @@ Rules:
           )}
 
           {text && (
-            <div
-              style={{
-                paddingTop: 14,
-                fontSize: 13,
-                color: '#c8dff2',
-                lineHeight: 1.6,
-              }}
-            >
+            <div style={{ paddingTop: 14, fontSize: 13, color: '#c8dff2', lineHeight: 1.6 }}>
               <ReactMarkdown components={markdownComponents}>
                 {text}
               </ReactMarkdown>
 
               {loading && (
-                <span
-                  style={{
-                    opacity: 0.5,
-                    animation: 'blink 1s step-end infinite',
-                  }}
-                >
+                <span style={{ opacity: 0.5, animation: 'blink 1s step-end infinite' }}>
                   ▋
                 </span>
               )}
@@ -758,16 +692,7 @@ Rules:
           )}
 
           {error && (
-            <div
-              style={{
-                paddingTop: 14,
-                fontSize: 12,
-                color: '#f87171',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-              }}
-            >
+            <div style={{ paddingTop: 14, fontSize: 12, color: '#f87171', display: 'flex', alignItems: 'center', gap: 10 }}>
               {error}
               <button
                 onClick={generate}
@@ -1026,29 +951,14 @@ export default function SimulatorPage({ data, projects, projectsLoading }) {
   }
 
   return (
-    <div
-      style={{
-        padding: 20,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 16,
-      }}
-    >
-      <p
-        style={{
-          fontSize: 12,
-          color: '#475569',
-          lineHeight: 1.6,
-          maxWidth: 700,
-        }}
-      >
+    <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <p style={{ fontSize: 12, color: '#475569', lineHeight: 1.6, maxWidth: 700 }}>
         Test where a new foundation budget could create strategic marginal value
         based on funding gaps, donor concentration, sector activity, and the
         foundation&apos;s stated goal.
       </p>
 
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-        {/* Inputs */}
         <div
           style={{
             width: 280,
@@ -1123,15 +1033,9 @@ export default function SimulatorPage({ data, projects, projectsLoading }) {
                 lineHeight: 1.5,
               }}
             />
-            <p
-              style={{
-                fontSize: 10,
-                color: '#334155',
-                marginTop: 4,
-              }}
-            >
-              Your goal now influences both the recommended portfolio and the AI
-              explanation.
+            <p style={{ fontSize: 10, color: '#334155', marginTop: 4 }}>
+              Enter a goal to personalize the portfolio. If left blank, the
+              simulator uses the selected risk strategy as the default objective.
             </p>
           </div>
 
@@ -1201,19 +1105,8 @@ export default function SimulatorPage({ data, projects, projectsLoading }) {
             Generate Portfolio
           </button>
 
-          <div
-            style={{
-              borderTop: '1px solid rgba(255,255,255,0.06)',
-              paddingTop: 10,
-            }}
-          >
-            <p
-              style={{
-                fontSize: 10,
-                color: '#334155',
-                lineHeight: 1.6,
-              }}
-            >
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10 }}>
+            <p style={{ fontSize: 10, color: '#334155', lineHeight: 1.6 }}>
               <strong style={{ color: '#475569' }}>Score components:</strong>
               <br />
               Goal match · White space · Donor concentration · Sector activity ·
@@ -1222,16 +1115,7 @@ export default function SimulatorPage({ data, projects, projectsLoading }) {
           </div>
         </div>
 
-        {/* Results */}
-        <div
-          style={{
-            flex: 1,
-            minWidth: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 14,
-          }}
-        >
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
           {!portfolio ? (
             <div
               style={{
@@ -1249,10 +1133,7 @@ export default function SimulatorPage({ data, projects, projectsLoading }) {
                 fill="none"
                 stroke="#334155"
                 strokeWidth="1.5"
-                style={{
-                  margin: '0 auto 16px',
-                  display: 'block',
-                }}
+                style={{ margin: '0 auto 16px', display: 'block' }}
               >
                 <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
               </svg>
@@ -1264,30 +1145,12 @@ export default function SimulatorPage({ data, projects, projectsLoading }) {
             </div>
           ) : (
             <>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'baseline',
-                  justifyContent: 'space-between',
-                }}
-              >
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
                 <div>
-                  <p
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 700,
-                      color: '#e2eaf4',
-                    }}
-                  >
+                  <p style={{ fontSize: 14, fontWeight: 700, color: '#e2eaf4' }}>
                     Recommended Funding Portfolio
                   </p>
-                  <p
-                    style={{
-                      fontSize: 11,
-                      color: '#475569',
-                      marginTop: 2,
-                    }}
-                  >
+                  <p style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>
                     {portfolio.allocs.length} allocations · {params.risk}{' '}
                     strategy · {fmt(portfolio.budgetM)} total budget
                   </p>
@@ -1370,7 +1233,6 @@ function AllocationCard({ alloc, projects, projectsLoading }) {
           transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
         }}
       >
-        {/* Front */}
         <div
           style={{
             position: 'absolute',
@@ -1387,53 +1249,23 @@ function AllocationCard({ alloc, projects, projectsLoading }) {
             overflow: 'hidden',
           }}
         >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-            }}
-          >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <p
-                style={{
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: '#e2eaf4',
-                }}
-              >
+              <p style={{ fontSize: 13, fontWeight: 700, color: '#e2eaf4' }}>
                 {alloc.country}
               </p>
-              <p
-                style={{
-                  fontSize: 11,
-                  color: '#60a5fa',
-                  marginTop: 1,
-                }}
-              >
+              <p style={{ fontSize: 11, color: '#60a5fa', marginTop: 1 }}>
                 {alloc.sector}
               </p>
               {alloc.meta?.regionMacro && (
-                <p
-                  style={{
-                    fontSize: 10,
-                    color: '#334155',
-                    marginTop: 1,
-                  }}
-                >
+                <p style={{ fontSize: 10, color: '#334155', marginTop: 1 }}>
                   {alloc.meta.regionMacro}
                 </p>
               )}
             </div>
 
             <div style={{ textAlign: 'right', flexShrink: 0 }}>
-              <p
-                style={{
-                  fontSize: 16,
-                  fontWeight: 700,
-                  color: '#34d399',
-                }}
-              >
+              <p style={{ fontSize: 16, fontWeight: 700, color: '#34d399' }}>
                 {fmt(alloc.allocation)}
               </p>
               <p style={{ fontSize: 10, color: '#475569' }}>
@@ -1465,9 +1297,7 @@ function AllocationCard({ alloc, projects, projectsLoading }) {
               label="Sector Activity"
               value={alloc.actScore}
               color="#60a5fa"
-              tag={
-                alloc.actScore > 60 ? 'High' : alloc.actScore > 30 ? 'Med' : 'Low'
-              }
+              tag={alloc.actScore > 60 ? 'High' : alloc.actScore > 30 ? 'Med' : 'Low'}
             />
             <SignalBar
               label="Momentum"
@@ -1479,13 +1309,7 @@ function AllocationCard({ alloc, projects, projectsLoading }) {
 
           {alloc.topDonors.length > 0 && (
             <div>
-              <p
-                style={{
-                  fontSize: 10,
-                  color: '#334155',
-                  marginBottom: 4,
-                }}
-              >
+              <p style={{ fontSize: 10, color: '#334155', marginBottom: 4 }}>
                 Top existing donors
               </p>
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -1528,7 +1352,6 @@ function AllocationCard({ alloc, projects, projectsLoading }) {
           </button>
         </div>
 
-        {/* Back */}
         <div
           style={{
             position: 'absolute',
@@ -1545,31 +1368,12 @@ function AllocationCard({ alloc, projects, projectsLoading }) {
             gap: 8,
           }}
         >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexShrink: 0,
-            }}
-          >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
             <div>
-              <p
-                style={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: '#e2eaf4',
-                }}
-              >
+              <p style={{ fontSize: 12, fontWeight: 700, color: '#e2eaf4' }}>
                 {alloc.country}
               </p>
-              <p
-                style={{
-                  fontSize: 10,
-                  color: '#60a5fa',
-                  marginTop: 1,
-                }}
-              >
+              <p style={{ fontSize: 10, color: '#60a5fa', marginTop: 1 }}>
                 Active Projects ({countryProjects.length})
               </p>
             </div>
@@ -1592,16 +1396,7 @@ function AllocationCard({ alloc, projects, projectsLoading }) {
 
           <div style={{ overflowY: 'auto', flex: 1 }}>
             {projectsLoading && !projects ? (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '12px 0',
-                  color: '#475569',
-                  fontSize: 11,
-                }}
-              >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 0', color: '#475569', fontSize: 11 }}>
                 <div
                   style={{
                     width: 12,
@@ -1624,34 +1419,16 @@ function AllocationCard({ alloc, projects, projectsLoading }) {
                     borderBottom: '1px solid rgba(255,255,255,0.04)',
                   }}
                 >
-                  <p
-                    style={{
-                      fontSize: 11,
-                      color: '#c8dff2',
-                      lineHeight: 1.4,
-                    }}
-                  >
+                  <p style={{ fontSize: 11, color: '#c8dff2', lineHeight: 1.4 }}>
                     {p.title}
                   </p>
-                  <p
-                    style={{
-                      fontSize: 10,
-                      color: '#475569',
-                      marginTop: 2,
-                    }}
-                  >
+                  <p style={{ fontSize: 10, color: '#475569', marginTop: 2 }}>
                     {p.sector} · {p.year} · {fmt(p.amount)}
                   </p>
                 </div>
               ))
             ) : (
-              <p
-                style={{
-                  fontSize: 11,
-                  color: '#334155',
-                  padding: '8px 0',
-                }}
-              >
+              <p style={{ fontSize: 11, color: '#334155', padding: '8px 0' }}>
                 No detailed project data available for {alloc.country} in the
                 current dataset.
               </p>
@@ -1671,14 +1448,7 @@ function SignalBar({ label, value, color, tag }) {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <span
-        style={{
-          fontSize: 10,
-          color: '#475569',
-          width: 82,
-          flexShrink: 0,
-        }}
-      >
+      <span style={{ fontSize: 10, color: '#475569', width: 82, flexShrink: 0 }}>
         {label}
       </span>
 
@@ -1744,13 +1514,7 @@ function PortfolioSummary({ portfolio }) {
         Portfolio Summary
       </p>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(5,1fr)',
-          gap: 12,
-        }}
-      >
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
         {[
           {
             label: 'Total Budget',
@@ -1779,22 +1543,10 @@ function PortfolioSummary({ portfolio }) {
           },
         ].map(({ label, value, color }) => (
           <div key={label} style={{ textAlign: 'center' }}>
-            <p
-              style={{
-                fontSize: 10,
-                color: '#475569',
-                marginBottom: 4,
-              }}
-            >
+            <p style={{ fontSize: 10, color: '#475569', marginBottom: 4 }}>
               {label}
             </p>
-            <p
-              style={{
-                fontSize: 15,
-                fontWeight: 700,
-                color,
-              }}
-            >
+            <p style={{ fontSize: 15, fontWeight: 700, color }}>
               {value}
             </p>
           </div>
