@@ -734,6 +734,110 @@ Rules:
   )
 }
 
+// ── Build compact country summaries for Claude ────────────────────────────────
+function buildCountryCandidates({ csMeta, countryMeta, projects, sector, region, goal, maxCsTotal }) {
+  const maxSectorFunding = sector !== 'All'
+    ? Math.max(...Object.values(csMeta).filter(cs => cs.sector === sector).map(cs => cs.total), 1)
+    : maxCsTotal
+
+  const byCountry = {}
+
+  for (const cs of Object.values(csMeta)) {
+    const meta = countryMeta[cs.country]
+    if (region !== 'All' && meta?.regionMacro !== region) continue
+
+    if (!byCountry[cs.country]) {
+      byCountry[cs.country] = {
+        country: cs.country,
+        region: meta?.regionMacro || '',
+        totalFunding: meta?.total || 0,
+        wsLabel: '',
+        concLabel: '',
+        topDonors: [],
+        sectors: [],
+        projectSamples: [],
+      }
+    }
+
+    byCountry[cs.country].sectors.push({ sector: cs.sector, amount: cs.total, projectCount: 0 })
+
+    // Use target sector entry for ws/conc signals (most relevant to the query)
+    if (sector === 'All' || cs.sector === sector) {
+      const dVals = Object.values(cs.donors)
+      const dTotal = dVals.reduce((s, v) => s + v, 0)
+      const topAmt = dVals.length ? Math.max(...dVals) : 0
+      const topShare = dTotal > 0 ? topAmt / dTotal : 0
+      const wsRef = sector !== 'All' ? cs.total : (meta?.total || 0)
+      const wsMax = sector !== 'All' ? maxSectorFunding : maxCsTotal
+      const ws = scoreWS(wsRef, wsMax)
+
+      if (!byCountry[cs.country].wsLabel || cs.sector === sector) {
+        byCountry[cs.country].wsLabel = wsLabel(ws)
+        byCountry[cs.country].concLabel = topShare > 0.65 ? 'High' : topShare > 0.35 ? 'Medium' : 'Low'
+        byCountry[cs.country].topDonors = Object.entries(cs.donors)
+          .sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k]) => k)
+      }
+    }
+  }
+
+  // Keep only countries with the target sector (when filtered)
+  let candidates = Object.values(byCountry)
+  if (sector !== 'All') {
+    candidates = candidates.filter(c => c.sectors.some(s => s.sector === sector))
+  }
+
+  // Count projects per country+sector using projects array
+  const goalWords = goal ? goal.toLowerCase().split(/\W+/).filter(w => w.length > 3) : []
+
+  if (projects && projects.length) {
+    const pIdx = {}
+    for (const p of projects) {
+      const k = `${p.country}|||${p.sector}`
+      pIdx[k] = (pIdx[k] || 0) + 1
+    }
+
+    for (const c of candidates) {
+      for (const s of c.sectors) {
+        s.projectCount = pIdx[`${c.country}|||${s.sector}`] || 0
+      }
+
+      const sectorFilter = sector !== 'All' ? sector : null
+      const cProjs = projects.filter(p =>
+        p.country === c.country && (!sectorFilter || p.sector === sectorFilter)
+      )
+
+      const scored = cProjs.map(p => {
+        let score = 0
+        const text = (p.title + ' ' + (p.description || '')).toLowerCase()
+        for (const w of goalWords) if (text.includes(w)) score += 2
+        if (p.year >= 2022) score += 1
+        return { score, title: p.title, desc: p.description }
+      })
+
+      c.projectSamples = scored
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5)
+        .map(s => s.title + (s.desc ? ` — ${s.desc.slice(0, 80)}` : ''))
+    }
+  }
+
+  // Sort each country's sectors by amount, keep top 5
+  for (const c of candidates) {
+    c.sectors.sort((a, b) => b.amount - a.amount)
+    c.sectors = c.sectors.slice(0, 5)
+  }
+
+  // Sort candidates: most active in target sector first (or by total)
+  candidates.sort((a, b) => {
+    const getAmt = c => sector !== 'All'
+      ? (c.sectors.find(s => s.sector === sector)?.amount || 0)
+      : c.totalFunding
+    return getAmt(b) - getAmt(a)
+  })
+
+  return candidates.slice(0, 35)
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function SimulatorPage({ data, projects, projectsLoading }) {
   const [budget, setBudget] = useState(10)
@@ -742,6 +846,9 @@ export default function SimulatorPage({ data, projects, projectsLoading }) {
   const [goal, setGoal] = useState('')
   const [risk, setRisk] = useState('balanced')
   const [params, setParams] = useState(null)
+  const [portfolio, setPortfolio] = useState(null)
+  const [portfolioLoading, setPortfolioLoading] = useState(false)
+  const [portfolioError, setPortfolioError] = useState(null)
 
   const { csMeta, sectorMeta, maxCsTotal, maxSectorTotal } = useMemo(() => {
     const cs = {}
@@ -810,126 +917,107 @@ export default function SimulatorPage({ data, projects, projectsLoading }) {
     [data]
   )
 
-  const portfolio = useMemo(() => {
-    if (!params) return null
+  const handleGenerate = useCallback(async () => {
+    const bM = Number(budget) || 10
+    const currentParams = { budget: bM, region, sector, risk, goal }
+    setParams(currentParams)
+    setPortfolioLoading(true)
+    setPortfolioError(null)
+    setPortfolio(null)
 
-    const {
-      budget: bM,
-      region: reg,
-      sector: sec,
-      risk: rsk,
-      goal: strategicGoal,
-    } = params
+    try {
+      const years = data.years || [2020, 2021, 2022, 2023]
+      const n = numSlots(risk)
 
-    const years = data.years || [2020, 2021, 2022, 2023]
-    const n = numSlots(rsk)
-
-    const candidates = Object.values(csMeta)
-      .filter(cs => {
-        if (sec !== 'All' && cs.sector !== sec) return false
-
-        const meta = countryMeta[cs.country]
-        if (reg !== 'All' && meta?.regionMacro !== reg) return false
-
-        return true
+      const candidates = buildCountryCandidates({
+        csMeta, countryMeta, projects: projects || null,
+        sector, region, goal, maxCsTotal,
       })
-      .map(cs => {
+
+      if (!candidates.length) {
+        setPortfolioError('No matching countries found for the selected criteria.')
+        return
+      }
+
+      const res = await fetch('/api/recommend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidates, numSlots: n, budget: bM, sector, region, risk, goal }),
+      })
+
+      if (!res.ok) {
+        const msg = await res.text().catch(() => `HTTP ${res.status}`)
+        throw new Error(msg || `API error ${res.status}`)
+      }
+
+      const body = await res.json()
+      if (body.error) throw new Error(body.error)
+      const selections = body.selections
+      if (!selections?.length) throw new Error('AI returned no selections')
+
+      const allocs = selections.map(sel => {
+        const csKey = `${sel.country}|||${sel.sector}`
+        const cs = csMeta[csKey] || Object.values(csMeta).find(c => c.country === sel.country)
+        if (!cs) return null
+
         const dVals = Object.values(cs.donors)
         const dTotal = dVals.reduce((s, v) => s + v, 0)
-        const topAmt = Math.max(...dVals, 0)
+        const topAmt = dVals.length ? Math.max(...dVals) : 0
         const topShare = dTotal > 0 ? topAmt / dTotal : 0
-        const topDonors = Object.entries(cs.donors)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 3)
-          .map(([k]) => k)
+        const topDonors = Object.entries(cs.donors).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k]) => k)
 
         const ws = scoreWS(cs.total, maxCsTotal)
         const conc = scoreConc(topShare)
-        const act = scoreAct(sectorMeta[cs.sector]?.total || 0, maxSectorTotal)
-        const mom = scoreMom(sectorMeta[cs.sector]?.byYear || {}, years)
+        const sectorData = sectorMeta[sel.sector] || sectorMeta[cs.sector] || {}
+        const act = scoreAct(sectorData.total || 0, maxSectorTotal)
+        const mom = scoreMom(sectorData.byYear || {}, years)
         const sat = clamp((cs.total / maxCsTotal) * 100)
-
-        const baseScore = composite(ws, conc, act, mom, sat, rsk)
-
-        const goalScore = goalRelevanceScore(strategicGoal, {
-          country: cs.country,
-          sector: cs.sector,
-          wsScore: ws,
-          concScore: conc,
-          actScore: act,
-          momScore: mom,
-          satScore: sat,
-          topDonors,
-        })
-
-        const hasStrategicGoal =
-          strategicGoal && strategicGoal.trim().length > 3
-
-        const score = hasStrategicGoal
-          ? clamp(baseScore * 0.72 + goalScore * 0.85)
-          : baseScore
+        const score = composite(ws, conc, act, mom, sat, risk)
+        const allocPct = Math.max(Number(sel.allocationPct) || 1, 1)
 
         return {
-          ...cs,
+          country: sel.country,
+          sector: sel.sector,
+          total: cs.total,
+          donors: cs.donors,
+          byYear: cs.byYear,
           wsScore: ws,
           concScore: conc,
           actScore: act,
           momScore: mom,
           satScore: sat,
-          baseScore,
-          goalScore,
-          goalMatch: goalMatchLabel(goalScore),
           score,
+          goalScore: goal && goal.trim().length > 3 ? 30 : 0,
+          goalMatch: goal && goal.trim().length > 3 ? 'Strong' : 'Neutral',
           topDonorShare: topShare,
           topDonors,
-          meta: countryMeta[cs.country],
+          meta: countryMeta[sel.country],
+          allocation: Math.round((allocPct / 100) * bM * 10) / 10,
+          sharePct: allocPct,
+          aiReason: sel.reason || '',
         }
+      }).filter(Boolean)
+
+      if (!allocs.length) throw new Error('No valid allocations could be built from AI selections')
+
+      const uniqueCountries = new Set(allocs.map(a => a.country)).size
+      const uniqueSectors = new Set(allocs.map(a => a.sector)).size
+      const avgConc = allocs.reduce((s, a) => s + a.topDonorShare, 0) / allocs.length
+
+      setPortfolio({
+        allocs,
+        uniqueCountries,
+        uniqueSectors,
+        avgConc,
+        divLbl: divLabel(uniqueCountries, uniqueSectors),
+        budgetM: bM,
       })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, n)
-
-    if (!candidates.length) return null
-
-    const totalScore = candidates.reduce((s, c) => s + c.score, 0)
-
-    const allocs = candidates.map(c => ({
-      ...c,
-      allocation: Math.round((c.score / totalScore) * bM * 10) / 10,
-      sharePct: Math.round((c.score / totalScore) * 100),
-    }))
-
-    const uniqueCountries = new Set(allocs.map(a => a.country)).size
-    const uniqueSectors = new Set(allocs.map(a => a.sector)).size
-    const avgConc =
-      allocs.reduce((s, a) => s + a.topDonorShare, 0) / allocs.length
-
-    return {
-      allocs,
-      uniqueCountries,
-      uniqueSectors,
-      avgConc,
-      divLbl: divLabel(uniqueCountries, uniqueSectors),
-      budgetM: bM,
+    } catch (e) {
+      setPortfolioError(e.message)
+    } finally {
+      setPortfolioLoading(false)
     }
-  }, [
-    params,
-    csMeta,
-    sectorMeta,
-    countryMeta,
-    maxCsTotal,
-    maxSectorTotal,
-    data,
-  ])
-
-  const handleGenerate = useCallback(() => {
-    setParams({
-      budget: Number(budget) || 10,
-      region,
-      sector,
-      risk,
-      goal,
-    })
-  }, [budget, region, sector, risk, goal])
+  }, [budget, region, sector, risk, goal, csMeta, sectorMeta, countryMeta, maxCsTotal, maxSectorTotal, data, projects])
 
   const inputStyle = {
     background: '#070f1c',
@@ -1116,7 +1204,7 @@ export default function SimulatorPage({ data, projects, projectsLoading }) {
         </div>
 
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {!portfolio ? (
+          {portfolioLoading ? (
             <div
               style={{
                 background: '#0f1e31',
@@ -1126,24 +1214,49 @@ export default function SimulatorPage({ data, projects, projectsLoading }) {
                 textAlign: 'center',
               }}
             >
-              <svg
-                width="40"
-                height="40"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#334155"
-                strokeWidth="1.5"
-                style={{ margin: '0 auto 16px', display: 'block' }}
-              >
-                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-              </svg>
-              <p style={{ color: '#475569', fontSize: 13 }}>
-                Configure inputs and click{' '}
-                <strong style={{ color: '#7ab4d8' }}>Generate Portfolio</strong>{' '}
-                to run the simulation.
-              </p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, color: '#475569', fontSize: 13 }}>
+                <div
+                  style={{
+                    width: 16,
+                    height: 16,
+                    border: '2px solid #2366c9',
+                    borderTopColor: 'transparent',
+                    borderRadius: '50%',
+                    animation: 'spin 0.8s linear infinite',
+                    flexShrink: 0,
+                  }}
+                />
+                AI is analyzing project data and selecting countries…
+                <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+              </div>
             </div>
-          ) : (
+          ) : portfolioError ? (
+            <div
+              style={{
+                background: '#0f1e31',
+                border: '1px solid rgba(248,113,113,0.25)',
+                borderRadius: 12,
+                padding: 32,
+                textAlign: 'center',
+              }}
+            >
+              <p style={{ color: '#f87171', fontSize: 13, marginBottom: 14 }}>{portfolioError}</p>
+              <button
+                onClick={handleGenerate}
+                style={{
+                  fontSize: 12,
+                  color: '#7ab4d8',
+                  background: 'none',
+                  border: '1px solid rgba(35,102,201,0.3)',
+                  borderRadius: 6,
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                }}
+              >
+                Retry
+              </button>
+            </div>
+          ) : portfolio ? (
             <>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
                 <div>
@@ -1176,6 +1289,7 @@ export default function SimulatorPage({ data, projects, projectsLoading }) {
                     alloc={alloc}
                     projects={projects}
                     projectsLoading={projectsLoading}
+                    criteria={{ sector: params?.sector, goal: params?.goal }}
                   />
                 ))}
               </div>
@@ -1194,14 +1308,39 @@ export default function SimulatorPage({ data, projects, projectsLoading }) {
                 }}
               >
                 <strong style={{ color: '#64748b' }}>Note: </strong>
-                This simulator does not prescribe where funding must go. It uses
-                OECD historical funding patterns and goal relevance signals to
-                generate strategy scenarios for further investigation. Scores
-                reflect relative signals only — all allocations should be
-                validated against local context, grantee capacity, and foundation
-                strategy before any commitment.
+                This simulator uses AI to analyze OECD project data and select
+                funding opportunities. All allocations should be validated against
+                local context, grantee capacity, and foundation strategy before
+                any commitment.
               </div>
             </>
+          ) : (
+            <div
+              style={{
+                background: '#0f1e31',
+                border: '1px solid rgba(255,255,255,0.07)',
+                borderRadius: 12,
+                padding: 48,
+                textAlign: 'center',
+              }}
+            >
+              <svg
+                width="40"
+                height="40"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#334155"
+                strokeWidth="1.5"
+                style={{ margin: '0 auto 16px', display: 'block' }}
+              >
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+              </svg>
+              <p style={{ color: '#475569', fontSize: 13 }}>
+                Configure inputs and click{' '}
+                <strong style={{ color: '#7ab4d8' }}>Generate Portfolio</strong>{' '}
+                to run the simulation.
+              </p>
+            </div>
           )}
         </div>
       </div>
@@ -1212,15 +1351,33 @@ export default function SimulatorPage({ data, projects, projectsLoading }) {
 // ── Allocation card flip ──────────────────────────────────────────────────────
 const CARD_H = 290
 
-function AllocationCard({ alloc, projects, projectsLoading }) {
+function AllocationCard({ alloc, projects, projectsLoading, criteria }) {
   const [flipped, setFlipped] = useState(false)
   const wsCl = wsColor(alloc.wsScore)
   const concCl = concColor(alloc.topDonorShare)
 
-  const countryProjects = useMemo(
-    () => (projects || []).filter(p => p.country === alloc.country),
-    [projects, alloc.country]
-  )
+  const sortedProjects = useMemo(() => {
+    const all = (projects || []).filter(p => p.country === alloc.country)
+    if (!all.length) return []
+
+    const goalWords = (criteria?.goal || '')
+      .toLowerCase()
+      .split(/\W+/)
+      .filter(w => w.length > 3)
+    const targetSector = criteria?.sector && criteria.sector !== 'All' ? criteria.sector : null
+
+    return all
+      .map(p => {
+        let score = 0
+        if (targetSector && p.sector === targetSector) score += 10
+        const text = (p.title + ' ' + (p.description || '')).toLowerCase()
+        for (const w of goalWords) if (text.includes(w)) score += 3
+        if (p.year >= 2022) score += 1
+        return { ...p, relevance: score }
+      })
+      .sort((a, b) => b.relevance - a.relevance)
+      .slice(0, 15)
+  }, [projects, alloc.country, criteria])
 
   return (
     <div style={{ perspective: '1200px', height: CARD_H }}>
@@ -1369,15 +1526,9 @@ function AllocationCard({ alloc, projects, projectsLoading }) {
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-            <div>
-              <p style={{ fontSize: 12, fontWeight: 700, color: '#e2eaf4' }}>
-                {alloc.country}
-              </p>
-              <p style={{ fontSize: 10, color: '#60a5fa', marginTop: 1 }}>
-                Active Projects ({countryProjects.length})
-              </p>
-            </div>
-
+            <p style={{ fontSize: 12, fontWeight: 700, color: '#e2eaf4' }}>
+              {alloc.country}
+            </p>
             <button
               onClick={() => setFlipped(false)}
               style={{
@@ -1393,6 +1544,29 @@ function AllocationCard({ alloc, projects, projectsLoading }) {
               ← back
             </button>
           </div>
+
+          <div style={{ borderBottom: '1px solid rgba(35,102,201,0.15)', paddingBottom: 7, flexShrink: 0 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 5 }}>
+              <span style={{ fontSize: 9, color: '#475569', background: 'rgba(255,255,255,0.05)', borderRadius: 3, padding: '2px 6px' }}>
+                {alloc.sector}
+              </span>
+              <span style={{ fontSize: 9, color: wsColor(alloc.wsScore), background: 'rgba(255,255,255,0.05)', borderRadius: 3, padding: '2px 6px' }}>
+                {wsLabel(alloc.wsScore)} white space
+              </span>
+              {alloc.topDonors[0] && (
+                <span style={{ fontSize: 9, color: '#475569', background: 'rgba(255,255,255,0.05)', borderRadius: 3, padding: '2px 6px' }}>
+                  {alloc.topDonors[0].replace("China (People's Republic of)", 'China')} top donor
+                </span>
+              )}
+            </div>
+            {alloc.aiReason && (
+              <p style={{ fontSize: 10, color: '#7ab4d8', lineHeight: 1.4, fontStyle: 'italic' }}>
+                {alloc.aiReason}
+              </p>
+            )}
+          </div>
+
+          <p style={{ fontSize: 10, color: '#475569', flexShrink: 0 }}>Relevant Projects</p>
 
           <div style={{ overflowY: 'auto', flex: 1 }}>
             {projectsLoading && !projects ? (
@@ -1410,8 +1584,8 @@ function AllocationCard({ alloc, projects, projectsLoading }) {
                 />
                 Loading projects…
               </div>
-            ) : countryProjects.length > 0 ? (
-              countryProjects.map((p, i) => (
+            ) : sortedProjects.length > 0 ? (
+              sortedProjects.map((p, i) => (
                 <div
                   key={p.id || i}
                   style={{
@@ -1419,12 +1593,19 @@ function AllocationCard({ alloc, projects, projectsLoading }) {
                     borderBottom: '1px solid rgba(255,255,255,0.04)',
                   }}
                 >
-                  <p style={{ fontSize: 11, color: '#c8dff2', lineHeight: 1.4 }}>
+                  <p style={{ fontSize: 11, color: p.relevance > 0 ? '#c8dff2' : '#94a3b8', lineHeight: 1.4 }}>
                     {p.title}
                   </p>
-                  <p style={{ fontSize: 10, color: '#475569', marginTop: 2 }}>
-                    {p.sector} · {p.year} · {fmt(p.amount)}
-                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                    <p style={{ fontSize: 10, color: '#475569' }}>
+                      {p.sector} · {p.year} · {fmt(p.amount)}
+                    </p>
+                    {p.relevance > 0 && (
+                      <span style={{ fontSize: 9, color: '#34d399', padding: '1px 4px', background: 'rgba(52,211,153,0.1)', borderRadius: 3 }}>
+                        relevant
+                      </span>
+                    )}
+                  </div>
                 </div>
               ))
             ) : (

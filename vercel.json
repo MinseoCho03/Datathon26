@@ -6,6 +6,10 @@
     "api/claude.js": {
       "memory": 512,
       "maxDuration": 30
+    },
+    "api/recommend.js": {
+      "memory": 512,
+      "maxDuration": 30
     }
   },
   "rewrites": [
