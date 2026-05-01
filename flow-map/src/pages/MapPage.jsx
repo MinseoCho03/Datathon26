@@ -193,6 +193,7 @@ export default function MapPage({ data, projects, onNavigate }) {
   const [selectedCountry, setSelectedCountry] = useState(null)
   const [filters, setFilters] = useState({ sector: 'All', year: 'All', topN: 5 })
   const setFilter = (k, v) => setFilters(p => ({ ...p, [k]: v }))
+  const [worldwideDonorView, setWorldwideDonorView] = useState('countries')
 
   const recipientMeta = useMemo(() =>
     Object.fromEntries((data.recipients || []).map(r => [r.country, r])),
@@ -280,6 +281,19 @@ export default function MapPage({ data, projects, onNavigate }) {
 
     return { donor: sort(donor, 8), country: sort(country, 10), region: sort(region, 8), sectorPie }
   }, [filteredRecords, yearOnlyRecords, recipientMeta])
+
+  // Worldwide top donor orgs for the bottom card toggle
+  const worldwideTopOrgs = useMemo(() => {
+    if (!projects?.length) return []
+    const m = {}
+    projects.forEach(p => {
+      if (filters.year !== 'All' && String(p.year) !== String(filters.year)) return
+      if (filters.sector !== 'All' && p.sector !== filters.sector) return
+      if (!p.org) return
+      m[p.org] = (m[p.org] || 0) + (Number(p.amount) || 0)
+    })
+    return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, amount]) => ({ name, amount }))
+  }, [projects, filters.year, filters.sector])
 
   // Country-specific top orgs for sidebar toggle (from projects)
   const countryOrgs = useMemo(() => {
@@ -424,9 +438,33 @@ export default function MapPage({ data, projects, onNavigate }) {
           <BarList data={charts.region} single="#60a5fa" />
         </ChartCard>
 
-        {/* Top Donor Countries */}
-        <ChartCard title="Top Donor Countries">
-          <BarList data={charts.donor} colorFn={i => COLORS[i % COLORS.length]} />
+        {/* Top Donor Countries / Orgs */}
+        <ChartCard
+          title={worldwideDonorView === 'countries' ? 'Top Donor Countries' : 'Top Donor Organizations'}
+          sub={
+            <div style={{ display: 'inline-flex', borderRadius: 6, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.09)' }}>
+              {['countries', 'orgs'].map(v => (
+                <button
+                  key={v}
+                  onClick={() => setWorldwideDonorView(v)}
+                  style={{
+                    padding: '3px 10px', fontSize: 10, fontWeight: 700, border: 'none', cursor: 'pointer',
+                    background: worldwideDonorView === v ? 'rgba(35,102,201,0.28)' : 'rgba(255,255,255,0.03)',
+                    color: worldwideDonorView === v ? '#7ab4d8' : '#475569',
+                  }}
+                >
+                  {v === 'countries' ? 'Countries' : 'Orgs'}
+                </button>
+              ))}
+            </div>
+          }
+        >
+          {worldwideDonorView === 'countries'
+            ? <BarList data={charts.donor} colorFn={i => COLORS[i % COLORS.length]} />
+            : worldwideTopOrgs.length
+              ? <BarList data={worldwideTopOrgs} colorFn={i => COLORS[i % COLORS.length]} />
+              : <p style={{ fontSize: 11, color: '#475569', padding: '8px 0' }}>Loading organization data…</p>
+          }
         </ChartCard>
 
         {/* Top Recipient Countries */}

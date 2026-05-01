@@ -757,7 +757,7 @@ function CustomTooltip({ active, payload, label, isAmount }) {
 
 function prepareChartData(projects, config) {
   const map = new Map()
-  
+
   projects.forEach(p => {
     const xVal = p[config.xAxis] || 'Unknown'
     const yVal = config.yAxis === 'amount' ? (Number(p.amount) || 0) : 1
@@ -767,27 +767,36 @@ function prepareChartData(projects, config) {
     if (config.colorBy && config.colorBy !== 'none' && config.type !== 'pie') {
       colorVal = p[config.colorBy] || 'Unknown'
     }
-    
+
     if (!map.has(xVal)) {
       map.set(xVal, { name: truncate(String(xVal), 20), _original: xVal, total: 0, totalSize: 0 })
     }
-    
+
     const item = map.get(xVal)
     item.total += yVal
     item.totalSize += sizeVal
-    
+
     if (colorVal !== 'Total') {
       item[colorVal] = (item[colorVal] || 0) + yVal
       item[`${colorVal}_size`] = (item[`${colorVal}_size`] || 0) + sizeVal
     }
   })
-  
-  let result = Array.from(map.values()).sort((a, b) => b.total - a.total).slice(0, 40)
-  
+
+  let result = Array.from(map.values()).sort((a, b) => b.total - a.total)
+
+  if (config.xAxisFilter?.length) {
+    const filterSet = new Set(config.xAxisFilter)
+    result = result.filter(item => filterSet.has(String(item._original)))
+  } else if (config.xAxis === 'country' || config.xAxis === 'org') {
+    result = result.slice(0, 20)
+  } else {
+    result = result.slice(0, 40)
+  }
+
   if (config.xAxis === 'year') {
     result = result.sort((a, b) => String(a._original).localeCompare(String(b._original)))
   }
-  
+
   return result
 }
 
@@ -834,7 +843,7 @@ function DesignChartArea({ config, projects }) {
               paddingAngle={2}
               stroke="none"
             >
-              {data.slice(0, 15).map((entry, index) => (
+              {data.slice(0, 15).map((_entry, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
               ))}
             </Pie>
@@ -866,17 +875,81 @@ function DesignChartArea({ config, projects }) {
   )
 }
 
-function ChartDesignerConfig({ config, setConfig }) {
+function CheckboxRow({ checked, label, onChange }) {
+  return (
+    <label
+      style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '3px 5px', borderRadius: 5, transition: 'background 0.1s' }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+    >
+      <div style={{
+        width: 14, height: 14, borderRadius: 3, flexShrink: 0, transition: 'all 0.1s',
+        border: checked ? '1.5px solid #60a5fa' : '1.5px solid rgba(255,255,255,0.18)',
+        background: checked ? '#60a5fa' : 'transparent',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        {checked && (
+          <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
+            <path d="M1 3L3 5L7 1" stroke="#070f1c" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </div>
+      <input type="checkbox" checked={checked} onChange={onChange} style={{ display: 'none' }} />
+      <span style={{ fontSize: 11, color: checked ? '#c8dff2' : '#64748b', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+    </label>
+  )
+}
+
+function ChartDesignerConfig({ config, setConfig, availableValues = { sectors: [], countries: [], orgs: [] } }) {
+  const [filterSearch, setFilterSearch] = useState('')
+
   const dimensions = [
     { value: 'regionMacro', label: 'Region' },
     { value: 'sector', label: 'Sector' },
     { value: 'year', label: 'Year' },
-  ];
-  
+    { value: 'country', label: 'Recipient Country' },
+    { value: 'org', label: 'Donor Organization' },
+  ]
+
   const measures = [
     { value: 'amount', label: 'Funding Amount' },
-    { value: 'count', label: 'Project Count' }
-  ];
+    { value: 'count', label: 'Project Count' },
+  ]
+
+  const allItems = (
+    config.xAxis === 'sector' ? availableValues.sectors :
+    config.xAxis === 'country' ? availableValues.countries.slice(0, 80) :
+    config.xAxis === 'org' ? availableValues.orgs.slice(0, 80) : []
+  )
+
+  const defaultActiveSet = new Set(config.xAxis === 'sector' ? allItems : allItems.slice(0, 20))
+  const activeSet = config.xAxisFilter !== null ? new Set(config.xAxisFilter) : defaultActiveSet
+  const showFilter = ['sector', 'country', 'org'].includes(config.xAxis)
+
+  const visibleItems = filterSearch
+    ? allItems.filter(i => i.toLowerCase().includes(filterSearch.toLowerCase()))
+    : allItems
+
+  const handleXAxisChange = newAxis => {
+    setFilterSearch('')
+    setConfig({ ...config, xAxis: newAxis, xAxisFilter: null })
+  }
+
+  const toggleItem = item => {
+    const next = new Set(activeSet)
+    if (next.has(item)) next.delete(item); else next.add(item)
+    setConfig({ ...config, xAxisFilter: [...next] })
+  }
+
+  const checkedVisible = visibleItems.filter(i => activeSet.has(i)).length
+  const allVisibleChecked = visibleItems.length > 0 && checkedVisible === visibleItems.length
+
+  const toggleAllVisible = () => {
+    const next = new Set(activeSet)
+    if (allVisibleChecked) visibleItems.forEach(i => next.delete(i))
+    else visibleItems.forEach(i => next.add(i))
+    setConfig({ ...config, xAxisFilter: [...next] })
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -888,23 +961,15 @@ function ChartDesignerConfig({ config, setConfig }) {
       <div>
         <p style={S.label}>Chart Type</p>
         <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-          {[
-            { id: 'bar', label: 'Bar' },
-            { id: 'pie', label: 'Pie' },
-            { id: 'scatter', label: 'Scatter' },
-          ].map(t => (
+          {[{ id: 'bar', label: 'Bar' }, { id: 'pie', label: 'Pie' }, { id: 'scatter', label: 'Scatter' }].map(t => (
             <button
               key={t.id}
               onClick={() => setConfig({ ...config, type: t.id })}
               style={{
-                padding: '6px 12px',
-                borderRadius: 6,
-                fontSize: 12,
-                fontWeight: 600,
+                padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
                 border: config.type === t.id ? '1px solid #60a5fa' : '1px solid rgba(255,255,255,0.1)',
                 background: config.type === t.id ? 'rgba(96,165,250,0.15)' : 'rgba(255,255,255,0.03)',
                 color: config.type === t.id ? '#60a5fa' : '#94a3b8',
-                cursor: 'pointer'
               }}
             >
               {t.label}
@@ -913,57 +978,77 @@ function ChartDesignerConfig({ config, setConfig }) {
         </div>
       </div>
 
-      <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 12 }}>
-        <p style={{...S.label, marginBottom: 8}}>Columns</p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div>
-            <p style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Primary Category (X-Axis)</p>
-            <select 
-              value={config.xAxis} 
-              onChange={e => setConfig({...config, xAxis: e.target.value})}
-              style={S.input}
-            >
-              {dimensions.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
-            </select>
-          </div>
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <p style={{ ...S.label, marginBottom: 0 }}>X-Axis</p>
+        <select value={config.xAxis} onChange={e => handleXAxisChange(e.target.value)} style={S.input}>
+          {dimensions.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+        </select>
 
-          <div>
-            <p style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Primary Measure (Y-Axis)</p>
-            <select 
-              value={config.yAxis} 
-              onChange={e => setConfig({...config, yAxis: e.target.value})}
-              style={S.input}
-            >
-              {measures.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-            </select>
+        {showFilter && (
+          <div style={{ background: '#070f1c', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <p style={{ ...S.label, margin: 0 }}>
+                {config.xAxis === 'sector' ? 'Sectors' : config.xAxis === 'country' ? 'Countries' : 'Organizations'}
+                <span style={{ color: '#334155', fontWeight: 400, textTransform: 'none', fontSize: 10, marginLeft: 4 }}>
+                  {activeSet.size} selected
+                </span>
+              </p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={toggleAllVisible} style={{ fontSize: 10, color: '#475569', background: 'none', border: 'none', cursor: 'pointer' }}>
+                  {allVisibleChecked ? 'None' : 'All'}
+                </button>
+                {config.xAxisFilter !== null && (
+                  <button onClick={() => { setConfig({ ...config, xAxisFilter: null }); setFilterSearch('') }} style={{ fontSize: 10, color: '#334155', background: 'none', border: 'none', cursor: 'pointer' }}>
+                    Reset
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <input
+              value={filterSearch}
+              onChange={e => setFilterSearch(e.target.value)}
+              placeholder="Search…"
+              style={{ ...S.input, fontSize: 11, padding: '5px 8px' }}
+            />
+
+            <div style={{ maxHeight: 170, overflowY: 'auto', display: 'flex', flexDirection: 'column', paddingRight: 2 }}>
+              {visibleItems.map(item => (
+                <CheckboxRow
+                  key={item}
+                  checked={activeSet.has(item)}
+                  label={item}
+                  onChange={() => toggleItem(item)}
+                />
+              ))}
+              {!visibleItems.length && <p style={{ ...S.subtle, fontSize: 10, padding: '4px 5px' }}>No matches.</p>}
+            </div>
           </div>
+        )}
+
+        <div>
+          <p style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Y-Axis</p>
+          <select value={config.yAxis} onChange={e => setConfig({ ...config, yAxis: e.target.value })} style={S.input}>
+            {measures.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </select>
         </div>
       </div>
 
       {(config.type === 'bar' || config.type === 'scatter') && (
         <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 12 }}>
-          <p style={{...S.label, marginBottom: 8}}>Marks (Color & Size)</p>
+          <p style={{ ...S.label, marginBottom: 8 }}>Marks</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div>
               <p style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Color By</p>
-              <select 
-                value={config.colorBy} 
-                onChange={e => setConfig({...config, colorBy: e.target.value})}
-                style={S.input}
-              >
+              <select value={config.colorBy} onChange={e => setConfig({ ...config, colorBy: e.target.value })} style={S.input}>
                 <option value="none">None</option>
                 {dimensions.filter(d => d.value !== config.xAxis).map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
               </select>
             </div>
-            
             {config.type === 'scatter' && (
               <div>
                 <p style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Size By</p>
-                <select 
-                  value={config.sizeBy} 
-                  onChange={e => setConfig({...config, sizeBy: e.target.value})}
-                  style={S.input}
-                >
+                <select value={config.sizeBy} onChange={e => setConfig({ ...config, sizeBy: e.target.value })} style={S.input}>
                   <option value="none">None (Uniform)</option>
                   {measures.filter(m => m.value !== config.yAxis).map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                   <option value={config.yAxis}>{measures.find(m => m.value === config.yAxis)?.label}</option>
@@ -989,11 +1074,27 @@ export default function FundingNetworkPage({ projects = [], projectsLoading = fa
     xAxis: 'sector',
     yAxis: 'amount',
     colorBy: 'none',
-    sizeBy: 'none'
+    sizeBy: 'none',
+    xAxisFilter: null,
   })
 
   const funders = useMemo(() => buildFunderData(projects), [projects])
   const dataByFunder = useMemo(() => Object.fromEntries(funders.map(funder => [funder.name, funder])), [funders])
+
+  const availableValues = useMemo(() => {
+    if (!projects.length) return { sectors: [], countries: [], orgs: [] }
+    const countryTotals = {}, orgTotals = {}, sectorSet = new Set()
+    for (const p of projects) {
+      if (p.sector) sectorSet.add(p.sector)
+      if (p.country) countryTotals[p.country] = (countryTotals[p.country] || 0) + (Number(p.amount) || 0)
+      if (p.org) orgTotals[p.org] = (orgTotals[p.org] || 0) + (Number(p.amount) || 0)
+    }
+    return {
+      sectors: [...sectorSet].sort(),
+      countries: Object.entries(countryTotals).sort((a, b) => b[1] - a[1]).map(([k]) => k),
+      orgs: Object.entries(orgTotals).sort((a, b) => b[1] - a[1]).map(([k]) => k),
+    }
+  }, [projects])
 
   useEffect(() => {
     if (selectedFunders.length || !funders.length) return
@@ -1038,7 +1139,7 @@ export default function FundingNetworkPage({ projects = [], projectsLoading = fa
       <div style={{ display: 'grid', gridTemplateColumns: viewMode === 'design' ? '280px minmax(0, 1fr)' : '280px minmax(620px, 1fr) 300px', gap: 16, alignItems: 'start' }}>
         <aside style={{ ...S.panel, padding: 16, display: 'flex', flexDirection: 'column', gap: 14, position: 'sticky', top: 16 }}>
           {viewMode === 'design' ? (
-            <ChartDesignerConfig config={chartConfig} setConfig={setChartConfig} />
+            <ChartDesignerConfig config={chartConfig} setConfig={setChartConfig} availableValues={availableValues} />
           ) : (
             <>
               <div>
