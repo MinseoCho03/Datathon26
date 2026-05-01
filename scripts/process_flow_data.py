@@ -312,10 +312,8 @@ for country, total in sorted(donor_total.items(), key=lambda x: -x[1]):
 sector_totals = defaultdict(float)
 for r in clean_rows:
     sector_totals[r['sector']] += r['amount']
-sectors_list = ['All'] + [
-    s for s, _ in sorted(sector_totals.items(), key=lambda x: -x[1])
-    if s and s != 'Unspecified' and s != 'Other' and s != 'Admin'
-]
+sector_names = sorted(s for s in sector_totals if s and s != 'Other')
+sectors_list = ['All'] + sector_names + (['Other'] if 'Other' in sector_totals else [])
 
 # ── OECD Projects (deduplicated by row_id) ────────────────────────────────────
 # Group by row_id; for each unique grant keep the row with max amount.
@@ -531,7 +529,7 @@ output = {
     },
     'metricsByYear': source_metrics_by_year,
     'years': all_years,
-    'sectors': sectors_list[:15],
+    'sectors': sectors_list,
     'recipients': recipients,
     'donorCountries': donor_countries,
     'records': records,
