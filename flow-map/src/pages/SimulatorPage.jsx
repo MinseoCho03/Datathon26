@@ -910,10 +910,7 @@ export default function SimulatorPage({ data, projects, projectsLoading }) {
   )
 
   const sectorOpts = useMemo(
-    () =>
-      (data.sectors || ['All']).filter(
-        s => s !== 'Unspecified' && s !== 'Other'
-      ),
+    () => data.sectors || ['All'],
     [data]
   )
 

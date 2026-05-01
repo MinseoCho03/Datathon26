@@ -85,7 +85,12 @@ export default function ProjectsPage({ data, projects: projectsProp, projectsLoa
   const [region, setRegion]       = useState('All')
   const [page, setPage]           = useState(0)
 
-  const sectors  = useMemo(() => ['All', ...new Set(projects.map(p => p.sector).filter(Boolean).sort())], [projects])
+  const sectors  = useMemo(
+    () => data?.sectors?.length
+      ? data.sectors
+      : ['All', ...new Set(projects.map(p => p.sector).filter(Boolean).sort())],
+    [data, projects]
+  )
   const donors   = useMemo(() => ['All', ...new Set(projects.map(p => p.donorCountry).filter(Boolean).sort())], [projects])
   const years    = useMemo(() => ['All', ...new Set(projects.map(p => p.year).filter(Boolean).sort().reverse().map(String))], [projects])
   const regions  = useMemo(() => ['All', ...new Set(projects.map(p => p.regionMacro).filter(Boolean).sort())], [projects])
