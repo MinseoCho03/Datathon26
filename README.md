@@ -60,6 +60,8 @@ Support underserved children through health and education programs.
 ```text
 .
 +-- api/claude.js                  # Vercel serverless endpoint for AI explanations
++-- data/
+|   +-- OECD Dataset.xlsx - complete_p4d3_df.csv  # Source OECD export
 +-- flow-map/
 |   +-- public/
 |   |   +-- flow-data.json         # Aggregated OECD funding data
@@ -68,7 +70,8 @@ Support underserved children through health and education programs.
 |   |   +-- components/            # Sidebar, map, country profile
 |   |   +-- pages/                 # Map, projects, history, network, simulator
 |   +-- vite.config.js             # Vite config with local /api/claude middleware
-+-- scripts/                       # Data processing utilities
++-- scripts/
+    +-- process_flow_data.py       # Builds flow-data.json and projects.json
 ```
 
 ## Run Locally
@@ -101,6 +104,16 @@ npm run build
 ## Data Notes
 
 The prototype uses processed OECD private philanthropy funding data covering **2020-2023**, plus project-level records for exploration and funder history. Amounts are used as directional decision signals for discovery, comparison, and strategy discussion.
+
+The **Follow the Money** KPI cards use full OECD source summaries, including records that may not render as country-to-country map flows. Map layers, donor arcs, and flow charts use the processed mappable country-level records.
+
+Regenerate the app data after changing the source CSV:
+
+```bash
+python3 scripts/process_flow_data.py
+```
+
+This writes `flow-map/public/flow-data.json` and `flow-map/public/projects.json`, including yearly source KPI summaries used by the year filter.
 
 ## Responsible Use
 

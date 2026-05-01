@@ -119,6 +119,27 @@ function BarList({ data, colorFn, single, showRank = true }) {
   )
 }
 
+function getYearMetric(data, year) {
+  const byYear = data.metricsByYear || data.metrics?.byYear || data.metrics?.years
+  if (!byYear) return null
+
+  if (Array.isArray(byYear)) {
+    return byYear.find(row => String(row.year) === String(year)) || null
+  }
+
+  return byYear[String(year)] || byYear[year] || null
+}
+
+function normalizeSourceMetric(metric) {
+  if (!metric) return null
+  return {
+    total: metric.totalFunding ?? metric.total ?? metric.amount ?? 0,
+    countries: metric.recipientCount ?? metric.countries ?? metric.recipients ?? 0,
+    donors: metric.donorCount ?? metric.donors ?? 0,
+    records: metric.recordCount ?? metric.records ?? 0,
+  }
+}
+
 // ── Country search bar ─────────────────────────────────────────────────────────
 function CountrySearch({ countries, onSelect }) {
   const [query, setQuery]   = useState('')
@@ -204,12 +225,31 @@ export default function MapPage({ data, projects, onNavigate }) {
     return { total, countries: countries.size, donors: donors.size, records: filteredRecords.length }
   }, [filteredRecords])
 
-  const sourceKpis = useMemo(() => ({
-    total: data.metrics?.totalFunding ?? kpis.total,
-    countries: data.metrics?.recipientCount ?? kpis.countries,
-    donors: data.metrics?.donorCount ?? kpis.donors,
-    records: data.metrics?.recordCount ?? kpis.records,
-  }), [data, kpis])
+  const sourceKpis = useMemo(() => {
+    if (filters.year === 'All') {
+      return {
+        total: data.metrics?.totalFunding ?? kpis.total,
+        countries: data.metrics?.recipientCount ?? kpis.countries,
+        donors: data.metrics?.donorCount ?? kpis.donors,
+        records: data.metrics?.recordCount ?? kpis.records,
+        sourceAvailable: true,
+      }
+    }
+
+    const sourceMetric = normalizeSourceMetric(getYearMetric(data, filters.year))
+    if (sourceMetric) return { ...sourceMetric, sourceAvailable: true }
+
+    return {
+      total: 0,
+      countries: 0,
+      donors: 0,
+      records: 0,
+      sourceAvailable: false,
+    }
+  }, [data, filters.year, kpis])
+
+  const kpiScope = filters.year === 'All' ? 'All years' : String(filters.year)
+  const kpiSubPrefix = sourceKpis.sourceAvailable ? kpiScope : `${kpiScope} source summary unavailable`
 
   // 4 charts
   const charts = useMemo(() => {
@@ -354,10 +394,10 @@ export default function MapPage({ data, projects, onNavigate }) {
           <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }} />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
-          <Kpi label="Total Funding" value={fmt(sourceKpis.total)} sub="Full OECD source data" color="#34d399" />
-          <Kpi label="Recipient Countries" value={sourceKpis.countries} sub="Original recipient fields" color="#60a5fa" />
-          <Kpi label="Donor Countries" value={sourceKpis.donors} sub="Original donor fields" color="#f59e0b" />
-          <Kpi label="Flow Records" value={sourceKpis.records.toLocaleString()} sub="Positive-disbursement rows" color="#a78bfa" />
+          <Kpi label="Total Funding" value={sourceKpis.sourceAvailable ? fmt(sourceKpis.total) : '—'} sub={`${kpiSubPrefix} OECD source data`} color="#34d399" />
+          <Kpi label="Recipient Countries" value={sourceKpis.sourceAvailable ? sourceKpis.countries : '—'} sub={`${kpiSubPrefix} recipient fields`} color="#60a5fa" />
+          <Kpi label="Donor Countries" value={sourceKpis.sourceAvailable ? sourceKpis.donors : '—'} sub={`${kpiSubPrefix} donor fields`} color="#f59e0b" />
+          <Kpi label="Flow Records" value={sourceKpis.sourceAvailable ? sourceKpis.records.toLocaleString() : '—'} sub={`${kpiSubPrefix} source rows`} color="#a78bfa" />
         </div>
       </div>
 
