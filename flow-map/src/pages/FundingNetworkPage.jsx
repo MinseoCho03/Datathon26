@@ -811,9 +811,9 @@ function DesignChartArea({ config, projects }) {
     <div style={{ width: '100%', height: 500, paddingTop: 20 }}>
       <ResponsiveContainer>
         {config.type === 'bar' ? (
-          <BarChart data={data} margin={{ top: 10, right: 30, left: 20, bottom: 80 }}>
+          <BarChart data={data} margin={{ top: 10, right: 30, left: 20, bottom: 95 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-            <XAxis dataKey="name" stroke="#64748b" fontSize={11} angle={-45} textAnchor="end" tick={{ fill: '#94a3b8' }} />
+            <XAxis dataKey="name" stroke="#64748b" fontSize={11} angle={-45} textAnchor="end" tick={{ fill: '#94a3b8' }} interval={0} minTickGap={0} height={88} />
             <YAxis stroke="#64748b" fontSize={11} tickFormatter={yTickFormatter} tick={{ fill: '#94a3b8' }} />
             <Tooltip content={<CustomTooltip isAmount={config.yAxis === 'amount'} />} cursor={{fill: 'rgba(255,255,255,0.04)'}} />
             <Legend wrapperStyle={{ fontSize: 11, bottom: 10 }} />
@@ -842,9 +842,9 @@ function DesignChartArea({ config, projects }) {
             <Legend wrapperStyle={{ fontSize: 11 }} />
           </PieChart>
         ) : config.type === 'scatter' ? (
-          <ScatterChart margin={{ top: 20, right: 30, bottom: 80, left: 20 }}>
+          <ScatterChart margin={{ top: 20, right: 30, bottom: 95, left: 20 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-            <XAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} angle={-45} textAnchor="end" tick={{ fill: '#94a3b8' }} allowDuplicatedCategory={false} />
+            <XAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} angle={-45} textAnchor="end" tick={{ fill: '#94a3b8' }} allowDuplicatedCategory={false} interval={0} minTickGap={0} height={88} />
             <YAxis type="number" dataKey="total" stroke="#64748b" fontSize={11} name={config.yAxis} tickFormatter={yTickFormatter} tick={{ fill: '#94a3b8' }} />
             {config.sizeBy !== 'none' && <ZAxis type="number" dataKey="totalSize" range={[60, 600]} />}
             <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip isAmount={config.yAxis === 'amount'} />} />
@@ -1035,7 +1035,7 @@ export default function FundingNetworkPage({ projects = [], projectsLoading = fa
       </div>
 
 
-      <div style={{ display: 'grid', gridTemplateColumns: '280px minmax(620px, 1fr) 300px', gap: 16, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: viewMode === 'design' ? '280px minmax(0, 1fr)' : '280px minmax(620px, 1fr) 300px', gap: 16, alignItems: 'start' }}>
         <aside style={{ ...S.panel, padding: 16, display: 'flex', flexDirection: 'column', gap: 14, position: 'sticky', top: 16 }}>
           {viewMode === 'design' ? (
             <ChartDesignerConfig config={chartConfig} setConfig={setChartConfig} />
@@ -1115,7 +1115,7 @@ export default function FundingNetworkPage({ projects = [], projectsLoading = fa
           )}
         </aside>
 
-        <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <section style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
           <div style={{ ...S.panel, padding: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 12 }}>
               <div>
