@@ -61,7 +61,10 @@ Allocation rules:
 - Assign an allocationPct for each selection; all values must sum to exactly 100
 - DO NOT spread budget equally — weight by strategic importance
 - The top pick should receive at least 2× the smallest allocation
-- For each selection write a "reason": a brief phrase of 10 words max referencing the project data
+- For each selection write a "reason" of 25 words max using this two-part structure:
+  Part 1 (strict stat): "Total [sector] funding: $[amount from candidate data]M." — use the actual number.
+  Part 2 (open): one short country-specific sentence on strategic fit, unique opportunity, or relevant context.
+  No filler words. Be specific.
 
 Candidates:
 ${candidateText}
@@ -77,7 +80,7 @@ Respond with ONLY valid JSON, no other text:
     const client = new Anthropic({ apiKey })
     const msg = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 900,
+      max_tokens: 600,
       messages: [{ role: 'user', content: prompt }],
     })
 

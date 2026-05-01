@@ -120,12 +120,12 @@ function recommendApiPlugin() {
               return `${c.country} [${c.region}]\n  White space: ${c.wsLabel} | Concentration: ${c.concLabel} | Top donors: ${c.topDonors.join(', ') || 'none'}\n  Sectors:\n${sLines}\n  Sample projects:\n${pLines}`
             }).join('\n\n')
 
-            const prompt = `You are a philanthropic strategy advisor.\n\nFoundation: $${budget}M, ${risk} risk (favor ${riskDesc})\n${sectorLine}\n${region && region !== 'All' ? `Region: ${region}` : 'All regions'}\n${goalLine}\n\nSelect exactly ${numSlots} country-sector pairs from below. Allocation rules: sum to 100, top pick ≥ 2× smallest, do NOT spread equally.\n\nCandidates:\n${candidateText}\n\nJSON only:\n{"selections":[{"country":"...","sector":"...","allocationPct":35,"reason":"10 words max"}]}`
+            const prompt = `You are a philanthropic strategy advisor.\n\nFoundation: $${budget}M, ${risk} risk (favor ${riskDesc})\n${sectorLine}\n${region && region !== 'All' ? `Region: ${region}` : 'All regions'}\n${goalLine}\n\nSelect exactly ${numSlots} country-sector pairs from below. Allocation rules: sum to 100, top pick ≥ 2× smallest, do NOT spread equally.\n\nCandidates:\n${candidateText}\n\nJSON only:\n{"selections":[{"country":"...","sector":"...","allocationPct":35,"reason":"25 words max: 'Total [sector] funding: $[X]M. [country-specific insight]'"}]}`
 
             const client = new Anthropic({ apiKey })
             const msg = await client.messages.create({
               model: 'claude-sonnet-4-6',
-              max_tokens: 900,
+              max_tokens: 600,
               messages: [{ role: 'user', content: prompt }],
             })
 

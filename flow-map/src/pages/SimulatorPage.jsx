@@ -1546,21 +1546,11 @@ function AllocationCard({ alloc, projects, projectsLoading, criteria }) {
           </div>
 
           <div style={{ borderBottom: '1px solid rgba(35,102,201,0.15)', paddingBottom: 7, flexShrink: 0 }}>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 5 }}>
-              <span style={{ fontSize: 9, color: '#475569', background: 'rgba(255,255,255,0.05)', borderRadius: 3, padding: '2px 6px' }}>
-                {alloc.sector}
-              </span>
-              <span style={{ fontSize: 9, color: wsColor(alloc.wsScore), background: 'rgba(255,255,255,0.05)', borderRadius: 3, padding: '2px 6px' }}>
-                {wsLabel(alloc.wsScore)} white space
-              </span>
-              {alloc.topDonors[0] && (
-                <span style={{ fontSize: 9, color: '#475569', background: 'rgba(255,255,255,0.05)', borderRadius: 3, padding: '2px 6px' }}>
-                  {alloc.topDonors[0].replace("China (People's Republic of)", 'China')} top donor
-                </span>
-              )}
-            </div>
+            <span style={{ fontSize: 9, color: wsColor(alloc.wsScore), background: 'rgba(255,255,255,0.05)', borderRadius: 3, padding: '2px 6px', display: 'inline-block', marginBottom: 10 }}>
+              {wsLabel(alloc.wsScore)} white space
+            </span>
             {alloc.aiReason && (
-              <p style={{ fontSize: 10, color: '#7ab4d8', lineHeight: 1.4, fontStyle: 'italic' }}>
+              <p style={{ fontSize: 10, color: '#7ab4d8', lineHeight: 1.6 }}>
                 {alloc.aiReason}
               </p>
             )}
@@ -1596,15 +1586,10 @@ function AllocationCard({ alloc, projects, projectsLoading, criteria }) {
                   <p style={{ fontSize: 11, color: p.relevance > 0 ? '#c8dff2' : '#94a3b8', lineHeight: 1.4 }}>
                     {p.title}
                   </p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                  <div style={{ marginTop: 2 }}>
                     <p style={{ fontSize: 10, color: '#475569' }}>
                       {p.sector} · {p.year} · {fmt(p.amount)}
                     </p>
-                    {p.relevance > 0 && (
-                      <span style={{ fontSize: 9, color: '#34d399', padding: '1px 4px', background: 'rgba(52,211,153,0.1)', borderRadius: 3 }}>
-                        relevant
-                      </span>
-                    )}
                   </div>
                 </div>
               ))
